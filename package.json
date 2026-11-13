@@ -1,0 +1,10 @@
+{
+  "name": "command-analyzer",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "deploy": "npm run build -w @ca/web && npm run deploy -w @ca/infra --"
+  }
+}
