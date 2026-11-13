@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ErrorCode } from '@ca/core/types';
+import type { ErrorCode, FinalAnalysis } from '@ca/core/types';
 import { Mark } from './Mark';
 import { CommandForm } from './CommandForm';
 import { ResultView } from './ResultView';
-import type { Range } from './tokens';
+import { useScan } from './motion';
+import { wordSpans, type Range } from './tokens';
+import { WaitPanel } from './WaitPanel';
 import { UnlockGate } from './UnlockGate';
 import { useAnalyzer } from './useAnalyzer';
 
@@ -58,6 +60,14 @@ function Workspace({ secret, onUnauthorized }: { secret: string; onUnauthorized:
   // A new run or a cleared page drops any outline.
   useEffect(() => setHighlight([]), [status]);
 
+  // The wait panel stays up until it has finished ticking, even when the answer is fast.
+  const [revealed, setRevealed] = useState<FinalAnalysis | null>(null);
+  const waiting = status === 'loading' || (status === 'done' && result !== null && result !== revealed);
+  const onFinished = useCallback(() => setRevealed(result), [result]);
+  const [waitStep, setWaitStep] = useState(0);
+  const wordCount = command ? wordSpans(command).length : 0;
+  const scanIndex = useScan(waiting && waitStep === 1, wordCount);
+
   useEffect(() => {
     if (error === 'unauthorized') onUnauthorized();
   }, [error, onUnauthorized]);
@@ -67,11 +77,11 @@ function Workspace({ secret, onUnauthorized }: { secret: string; onUnauthorized:
       <CommandForm
         onAnalyze={run}
         onClear={clear}
-        busy={status === 'loading'}
-        result={status === 'done' ? result : null}
+        busy={waiting}
+        result={status === 'done' && !waiting ? result : null}
         analyzed={command}
         highlight={highlight}
-        scanIndex={null}
+        scanIndex={scanIndex}
       />
       <div className="out">
         {status === 'idle' && (
@@ -80,11 +90,11 @@ function Workspace({ secret, onUnauthorized }: { secret: string; onUnauthorized:
           </div>
         )}
         <section className="result" aria-live="polite">
-          {status === 'loading' && <p className="muted loading">Analyzing...</p>}
+          {waiting && <WaitPanel done={status === 'done'} onFinished={onFinished} onStep={setWaitStep} />}
           {status === 'error' && error && error !== 'unauthorized' && (
             <p className="error">{ERROR_TEXT[error]}</p>
           )}
-          {status === 'done' && result && (
+          {status === 'done' && result && !waiting && (
             <ResultView analysis={result} command={command ?? ''} onHighlight={onHighlight} onRetry={retry} />
           )}
         </section>

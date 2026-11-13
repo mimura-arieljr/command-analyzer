@@ -1246,3 +1246,149 @@ li:last-child {
     align-items: flex-start;
   }
 }
+
+/* ---- Wait panel ---- */
+.wait {
+  padding: 28px 24px;
+  background: var(--surface);
+  border: 1px dashed var(--control);
+  border-radius: var(--radius-card);
+}
+.wait .status {
+  font: 500 15px/22px var(--mono);
+  color: var(--text);
+}
+.wait .status::after {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 17px;
+  margin-left: 4px;
+  vertical-align: -3px;
+  background: var(--hue);
+}
+.wait ol {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.wait li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 13px;
+  opacity: 0.5;
+}
+.wait li.on {
+  opacity: 1;
+  color: var(--text);
+}
+.wait li.done {
+  opacity: 1;
+}
+.wait .dot {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--control);
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+}
+.wait li.on .dot {
+  border-color: var(--hue);
+}
+.wait li.done .dot {
+  border-color: var(--hue);
+  background: var(--hue);
+  color: var(--primary-ink);
+}
+
+/* ---- Motion: only for people who have not asked for less ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .wait .status::after {
+    animation: blink 1s steps(1) infinite;
+  }
+  .wait li {
+    transition: opacity 300ms var(--ease), color 300ms var(--ease);
+  }
+  .wait li.on .dot {
+    border-top-color: transparent;
+    animation: spin 0.8s linear infinite;
+  }
+  .tok {
+    transition: color 400ms var(--ease), background-color 150ms var(--ease), box-shadow 150ms var(--ease);
+  }
+  /* Sections rise in one after another, from the verdict down. */
+  .rv {
+    animation: rise 500ms var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 120ms);
+  }
+  /* Meter bars fill up to their level, bar by bar. */
+  .rv .meter i.on {
+    position: relative;
+    overflow: hidden;
+    background: var(--meter-off);
+  }
+  .rv .meter i.on::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--lvl);
+    transform-origin: bottom;
+    animation: fill-bar 350ms var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 120ms + 250ms);
+  }
+  .rv .meter i.on:nth-child(2)::after {
+    animation-delay: calc(var(--i, 0) * 120ms + 400ms);
+  }
+  .rv .meter i.on:nth-child(3)::after {
+    animation-delay: calc(var(--i, 0) * 120ms + 550ms);
+  }
+  /* A high verdict pulses twice. */
+  .banner .tag.pulse {
+    position: relative;
+  }
+  .banner .tag.pulse::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--high) 55%, transparent);
+    animation: pulse 1.4s var(--ease) 0.9s 2;
+  }
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fill-bar {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes pulse {
+  to {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}

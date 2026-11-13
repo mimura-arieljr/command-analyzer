@@ -103,6 +103,28 @@ describe('results and the command box', () => {
   });
 });
 
+describe('motion in the app', () => {
+  it('shows the wait panel, then the results', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: false, media: q }));
+    vi.mocked(analyze).mockResolvedValue({ ok: true, analysis: findXargs() });
+    await unlock();
+    analyzeText('rm -rf build');
+    expect(screen.getByRole('status').textContent).toContain('Working out the shell');
+    expect(document.querySelector('.cmdview')?.textContent).toBe('rm -rf build');
+    expect(await screen.findByText(HEADLINE, {}, { timeout: 3000 })).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('errors skip the wait panel', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: false, media: q }));
+    vi.mocked(analyze).mockResolvedValue({ ok: false, error: 'throttled', message: 'x' });
+    await unlock();
+    analyzeText('ls');
+    expect(await screen.findByText('Too many requests. Wait a moment and try again.')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
 describe('errors', () => {
   it('each error code shows its fixed message', async () => {
     const cases: [ErrorCode, string][] = [
