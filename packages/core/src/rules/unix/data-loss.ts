@@ -19,7 +19,7 @@ export const rmRules: RuleFn = (seg, ctx) => {
   const recursive = hasShort(inv.args, 'rR') || hasLong(inv.args, ['--recursive']);
   const force = hasShort(inv.args, 'f') || hasLong(inv.args, ['--force']);
   const wild = targets.some(isWild);
-  const relative = targets.some((w) => isRelative(w.raw));
+  const relative = targets.some((w) => isRelative(w.value));
   const root = targets.filter((w) => ROOT_TARGETS.has(w.raw) || ROOT_TARGETS.has(w.value));
   const vars = targets.filter((w) => isVariable(w) && !root.includes(w));
   const check = raws.length ? `Run "ls -d ${listOf(raws)}" first to see what it would delete.` : '';

@@ -48,6 +48,11 @@ describe('unix data loss rules', () => {
   it('relative deletes depend on the current folder', () => {
     expect(hit('rm -rf build', 'delete-recursive')?.depends_on).toMatch(/folder/);
   });
+
+  it('quoted absolute and variable paths do not depend on the current folder', () => {
+    expect(hit('rm -rf "/tmp/x"', 'delete-recursive')?.depends_on).toBe('');
+    expect(hit('rm -rf "$DIR/"', 'delete-recursive')?.depends_on).toBe('');
+  });
 });
 
 describe('unix redirects', () => {
