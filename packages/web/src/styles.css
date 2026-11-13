@@ -1022,3 +1022,227 @@ li:last-child {
     min-height: 200px;
   }
 }
+
+/* ---- Results: verdict banner with area pills ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.banner {
+  display: block;
+}
+.banner .top {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.areas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 14px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+}
+.areas .area {
+  --lvl: var(--none);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  margin: 0;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  background: var(--pill-none-bg);
+  color: var(--pill-none-ink);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.areas .area.low {
+  --lvl: var(--low);
+  background: var(--pill-low-bg);
+  color: var(--pill-low-ink);
+}
+.areas .area.medium {
+  --lvl: var(--medium);
+  background: var(--pill-medium-bg);
+  color: var(--pill-medium-ink);
+}
+.areas .area.high {
+  --lvl: var(--high);
+  background: var(--pill-high-bg);
+  color: var(--pill-high-ink);
+}
+
+/* Rows that light up their part of the command. */
+.finding[tabindex],
+.gl .ln,
+.steps tbody tr {
+  border-radius: var(--radius-control);
+  transition: background-color 150ms var(--ease);
+  outline-offset: -2px;
+}
+.finding[tabindex]:hover,
+.gl .ln:hover,
+.steps tbody tr:hover,
+.finding[tabindex]:focus-visible,
+.gl .ln:focus-visible,
+.steps tbody tr:focus-visible {
+  background: var(--raised);
+}
+.finding code {
+  font: 400 13px/20px var(--mono);
+  background: var(--raised);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.note-line {
+  margin-bottom: 8px;
+}
+
+/* ---- Glossary ---- */
+.gl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.gl li {
+  margin: 0;
+  padding: 0;
+}
+.gl > li {
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+.gl > li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.gl .ln {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  cursor: default;
+}
+.gl ul {
+  list-style: none;
+  margin: 4px 0 0 31px;
+  padding: 0 0 0 20px;
+  border-left: 2px solid var(--flag-bg);
+}
+.ty {
+  flex: none;
+  width: 72px;
+  padding: 2px 0;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ty.cmd {
+  background: var(--cmd-bg);
+  color: var(--cmd);
+}
+.ty.flag {
+  background: var(--flag-bg);
+  color: var(--flag);
+}
+.ty.sym {
+  background: var(--sym-bg);
+  color: var(--sym);
+}
+.gl code {
+  font: 400 13px/20px var(--mono);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.gl code.c {
+  background: var(--cmd-bg);
+  color: var(--cmd);
+  font-weight: 500;
+}
+.gl code.f {
+  background: var(--flag-bg);
+  color: var(--flag);
+}
+.gl code.s {
+  background: var(--sym-bg);
+  color: var(--sym);
+  font-weight: 500;
+}
+.alias {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.tip {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---- Steps table ---- */
+.steps th.num,
+.steps td.num {
+  width: 28px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.steps tr.joiner td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-top: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.steps tr.joiner code {
+  background: var(--sym-bg);
+  color: var(--sym);
+}
+
+/* Rules-only note */
+.card.note {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  border-style: dashed;
+}
+.card.note p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .banner .top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .gl ul {
+    margin-left: 12px;
+  }
+  .ty {
+    width: 64px;
+  }
+  .steps td.num {
+    display: none;
+  }
+  .card.note {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ErrorCode } from '@ca/core/types';
 import { Mark } from './Mark';
 import { CommandForm } from './CommandForm';
+import { ResultView } from './ResultView';
+import type { Range } from './tokens';
 import { UnlockGate } from './UnlockGate';
 import { useAnalyzer } from './useAnalyzer';
 
@@ -49,7 +51,12 @@ function initialTheme(): Theme {
 }
 
 function Workspace({ secret, onUnauthorized }: { secret: string; onUnauthorized: () => void }) {
-  const { status, result, error, command, run, clear } = useAnalyzer(secret);
+  const { status, result, error, command, run, retry, clear } = useAnalyzer(secret);
+  const [highlight, setHighlight] = useState<Range[]>([]);
+  const onHighlight = useCallback((r: Range[]) => setHighlight(r), []);
+
+  // A new run or a cleared page drops any outline.
+  useEffect(() => setHighlight([]), [status]);
 
   useEffect(() => {
     if (error === 'unauthorized') onUnauthorized();
@@ -63,7 +70,7 @@ function Workspace({ secret, onUnauthorized }: { secret: string; onUnauthorized:
         busy={status === 'loading'}
         result={status === 'done' ? result : null}
         analyzed={command}
-        highlight={[]}
+        highlight={highlight}
         scanIndex={null}
       />
       <div className="out">
@@ -77,7 +84,9 @@ function Workspace({ secret, onUnauthorized }: { secret: string; onUnauthorized:
           {status === 'error' && error && error !== 'unauthorized' && (
             <p className="error">{ERROR_TEXT[error]}</p>
           )}
-          {status === 'done' && result && <p>{result.headline}</p>}
+          {status === 'done' && result && (
+            <ResultView analysis={result} command={command ?? ''} onHighlight={onHighlight} onRetry={retry} />
+          )}
         </section>
       </div>
     </div>

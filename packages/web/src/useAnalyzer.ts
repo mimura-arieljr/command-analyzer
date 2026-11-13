@@ -10,6 +10,7 @@ export function useAnalyzer(secret: string) {
   const [error, setError] = useState<ErrorCode | null>(null);
   // The command the current result belongs to.
   const [command, setCommand] = useState<string | null>(null);
+  const lastShell = useRef<Shell | undefined>(undefined);
   // Refs so rapid calls see current values before React re-renders.
   const requestId = useRef(0);
   const loading = useRef(false);
@@ -23,6 +24,7 @@ export function useAnalyzer(secret: string) {
       setResult(null);
       setError(null);
       setCommand(text);
+      lastShell.current = shell;
       void analyze(text, shell, secret).then((res) => {
         if (id !== requestId.current) return;
         loading.current = false;
@@ -47,5 +49,10 @@ export function useAnalyzer(secret: string) {
     setCommand(null);
   }, []);
 
-  return { status, result, error, command, run, clear };
+  // Runs the last command again with the same shell choice.
+  const retry = useCallback(() => {
+    if (command !== null) run(command, lastShell.current);
+  }, [command, run]);
+
+  return { status, result, error, command, run, retry, clear };
 }

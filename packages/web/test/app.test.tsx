@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ErrorCode } from '@ca/core/types';
 import { analyze, checkSecret } from '../src/api';
 import { App } from '../src/App';
-import { findXargs } from './fixtures';
+import { FIND_XARGS, findXargs, rulesOnlyResult } from './fixtures';
 
 vi.mock('../src/api', () => ({
   checkSecret: vi.fn(),
@@ -75,6 +75,31 @@ describe('analysis', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect((screen.getByLabelText(FORM_LABEL) as HTMLTextAreaElement).value).toBe('');
     expect(screen.queryByText(HEADLINE)).toBeNull();
+  });
+});
+
+describe('results and the command box', () => {
+  it('hovering a glossary row outlines it in the command', async () => {
+    vi.mocked(analyze).mockResolvedValue({ ok: true, analysis: findXargs() });
+    await unlock();
+    analyzeText(FIND_XARGS);
+    await screen.findByText(HEADLINE);
+    const row = [...document.querySelectorAll('.gl .ln')].find((r) => r.querySelector('code')?.textContent === 'rm')!;
+    fireEvent.mouseEnter(row);
+    const marked = [...document.querySelectorAll('.cmdview .hl')].map((e) => e.textContent).join('');
+    expect(marked).toBe('rm');
+    fireEvent.mouseLeave(row);
+    expect(document.querySelector('.cmdview .hl')).toBeNull();
+  });
+
+  it('Retry runs the same command and shell again', async () => {
+    vi.mocked(analyze).mockResolvedValue({ ok: true, analysis: rulesOnlyResult() });
+    await unlock();
+    fireEvent.change(screen.getByLabelText('Shell'), { target: { value: 'zsh' } });
+    analyzeText(FIND_XARGS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(analyze).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(analyze).mock.calls[1]).toEqual([FIND_XARGS, 'zsh', 'pw']);
   });
 });
 
