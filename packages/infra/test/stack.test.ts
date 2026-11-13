@@ -189,6 +189,6 @@ describe('CommandAnalyzerStack', () => {
   });
 
   it('no resource name or description contains an em dash', () => {
-    expect(JSON.stringify(t.toJSON())).not.toContain('—');
+    expect(JSON.stringify(t.toJSON())).not.toContain('\u2014');
   });
 });
