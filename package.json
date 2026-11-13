@@ -1,6 +1,7 @@
 {
   "name": "command-analyzer",
   "private": true,
+  "type": "module",
   "workspaces": ["packages/*"],
   "scripts": {
     "test": "npm test --workspaces --if-present",
