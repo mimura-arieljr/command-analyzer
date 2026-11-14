@@ -15,6 +15,9 @@ interface Piece {
   end: number;
   kind: Span['kind'];
   hl: boolean;
+  // First and last piece of a highlighted range, which get the padding.
+  hlStart: boolean;
+  hlEnd: boolean;
   scan: boolean;
 }
 
@@ -39,6 +42,8 @@ function pieces(text: string, spans: Span[], highlight: Range[], scan: Range | n
         end: b,
         kind: s.kind,
         hl: highlight.some((r) => overlaps(a, b, r)),
+        hlStart: highlight.some((r) => r[0] === a),
+        hlEnd: highlight.some((r) => r[1] === b),
         scan: !!scan && overlaps(a, b, scan),
       });
     }
@@ -64,7 +69,9 @@ export function CommandView({ text, spans, highlight, scanIndex, words, onEdit }
       }}
     >
       {pieces(text, spans, highlight, scan).map((p) => {
-        const cls = ['tok', p.kind, p.hl && 'hl', p.scan && 'scan'].filter(Boolean).join(' ');
+        const cls = ['tok', p.kind, p.hl && 'hl', p.hl && p.hlStart && 'hl-start', p.hl && p.hlEnd && 'hl-end', p.scan && 'scan']
+          .filter(Boolean)
+          .join(' ');
         return (
           <span key={p.start} className={cls}>
             {text.slice(p.start, p.end)}

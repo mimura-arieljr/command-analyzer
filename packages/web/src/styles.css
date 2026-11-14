@@ -1003,10 +1003,28 @@ li:last-child {
 .tok.scan {
   background: color-mix(in srgb, var(--hue) 24%, transparent);
 }
+/* Highlight of the hovered part.
+   - 3px above and below, 4px at the outer ends, so the tint never touches the letters.
+   - Negative margins keep the text from shifting; inner pieces get no side padding, so tints never overlap. */
 .tok.hl {
   border-radius: 0;
+  padding: 3px 0;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   background: color-mix(in srgb, var(--hue) 22%, transparent);
   box-shadow: inset 0 -2px 0 var(--hue);
+}
+.tok.hl.hl-start {
+  padding-left: 4px;
+  margin-left: -4px;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+.tok.hl.hl-end {
+  padding-right: 4px;
+  margin-right: -4px;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
 }
 
 .shell-pick select {
@@ -1088,21 +1106,70 @@ li:last-child {
   color: var(--pill-high-ink);
 }
 
-/* Rows that light up their part of the command. */
-.finding[tabindex],
-.gl .ln,
-.steps tbody tr {
+/* Rows that light up their part of the command.
+   - The highlight bleeds 12px past the text, so text never touches its edge.
+   - Findings paint it on ::before, so their separator lines stay put. */
+.finding[tabindex] {
+  --hl-top: 0px;
+  --hl-bottom: 0px;
+  position: relative;
+  isolation: isolate;
+}
+.finding[tabindex]::before {
+  content: '';
+  position: absolute;
+  inset: var(--hl-top) -12px var(--hl-bottom);
+  z-index: -1;
+  border-radius: var(--radius-control);
+  transition: background-color 150ms var(--ease);
+  pointer-events: none;
+}
+.finding[tabindex]:hover::before,
+.finding[tabindex]:focus-visible::before {
+  background: var(--raised);
+}
+.finding[tabindex]:focus-visible {
+  outline: none;
+}
+.finding[tabindex]:focus-visible::before {
+  outline: 2px solid var(--hue);
+  outline-offset: -2px;
+}
+/* The first finding sits 8px under its heading and the last has no bottom padding. */
+.cat-head + .finding[tabindex] {
+  --hl-top: -4px;
+}
+.finding[tabindex]:last-child {
+  --hl-bottom: -10px;
+}
+.gl .ln {
   border-radius: var(--radius-control);
   transition: background-color 150ms var(--ease);
   outline-offset: -2px;
 }
-.finding[tabindex]:hover,
 .gl .ln:hover,
+.gl .ln:focus-visible {
+  background: var(--raised);
+}
+/* Table rows can't hold a positioned ::before, so the edge cells cast 12px strips instead. */
+.steps tbody tr {
+  transition: background-color 150ms var(--ease);
+  outline-offset: -2px;
+}
+.steps tbody td {
+  transition: box-shadow 150ms var(--ease);
+}
 .steps tbody tr:hover,
-.finding[tabindex]:focus-visible,
-.gl .ln:focus-visible,
 .steps tbody tr:focus-visible {
   background: var(--raised);
+}
+.steps tbody tr:hover > td:first-child,
+.steps tbody tr:focus-visible > td:first-child {
+  box-shadow: -12px 0 0 var(--raised);
+}
+.steps tbody tr:hover > td:last-child,
+.steps tbody tr:focus-visible > td:last-child {
+  box-shadow: 12px 0 0 var(--raised);
 }
 .finding code {
   font: 400 13px/20px var(--mono);
@@ -1125,7 +1192,7 @@ li:last-child {
   padding: 0;
 }
 .gl > li {
-  padding: 8px 0;
+  padding: 6px 0;
   border-top: 1px solid var(--rule);
 }
 .gl > li:first-child {
@@ -1136,8 +1203,8 @@ li:last-child {
   display: flex;
   gap: 10px;
   align-items: baseline;
-  padding: 4px 6px;
-  margin: 0 -6px;
+  padding: 6px 12px;
+  margin: 0 -12px;
   cursor: default;
 }
 .gl ul {
@@ -1249,6 +1316,45 @@ li:last-child {
   }
   .steps td.num {
     display: none;
+  }
+  /* Phone rows are blocks, so the highlight moves to a ::before like the findings. */
+  .steps tbody tr {
+    --hl-top: 0px;
+    --hl-bottom: 0px;
+    position: relative;
+    isolation: isolate;
+  }
+  .steps tbody tr:first-child {
+    --hl-top: -8px;
+  }
+  .steps tbody tr:last-child {
+    --hl-bottom: -8px;
+  }
+  .steps tbody tr::before {
+    content: '';
+    position: absolute;
+    inset: var(--hl-top) -12px var(--hl-bottom);
+    z-index: -1;
+    border-radius: var(--radius-control);
+    transition: background-color 150ms var(--ease);
+    pointer-events: none;
+  }
+  .steps tbody tr:hover,
+  .steps tbody tr:focus-visible {
+    background: none;
+    outline: none;
+  }
+  .steps tbody tr:hover > td:is(:first-child, :last-child),
+  .steps tbody tr:focus-visible > td:is(:first-child, :last-child) {
+    box-shadow: none;
+  }
+  .steps tbody tr:hover::before,
+  .steps tbody tr:focus-visible::before {
+    background: var(--raised);
+  }
+  .steps tbody tr:focus-visible::before {
+    outline: 2px solid var(--hue);
+    outline-offset: -2px;
   }
   .card.note {
     flex-direction: column;

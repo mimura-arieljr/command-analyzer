@@ -135,6 +135,17 @@ describe('CommandForm', () => {
     expect(marked).toBe('rm');
   });
 
+  it('marks only the outer edges of a highlight that spans several tokens', () => {
+    const { rerender } = setup();
+    typeAndAnalyze(FIND_XARGS);
+    const at = FIND_XARGS.indexOf('xargs');
+    rerender({ result: findXargs(), analyzed: FIND_XARGS, highlight: [[at, FIND_XARGS.length]] });
+    const marked = [...document.querySelectorAll('.cmdview .hl')];
+    expect(marked.length).toBeGreaterThan(2);
+    expect(marked.map((e) => e.classList.contains('hl-start'))).toEqual(marked.map((_, i) => i === 0));
+    expect(marked.map((e) => e.classList.contains('hl-end'))).toEqual(marked.map((_, i) => i === marked.length - 1));
+  });
+
   it('Analyze is disabled for empty text and over 5,000 characters', () => {
     setup();
     const button = screen.getByRole('button', { name: 'Analyze' }) as HTMLButtonElement;
