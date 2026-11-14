@@ -144,7 +144,7 @@ npm run deploy -- -c budgetEmail=you@example.com
 
 `npm run deploy` builds the web app and then runs `cdk deploy` in `packages/infra`. When it finishes, the outputs show `SiteUrl` and `SecretName`.
 
-**`-c` values are not remembered between deploys.** Pass the same ones every time, or record them in the `context` block of `packages/infra/cdk.json`. `cdk.json` is tracked by git, so do not commit your real email to a public repo.
+**`-c` values are not remembered between deploys.** Pass the same ones every time, or record them in `packages/infra/cdk.context.json`, which CDK reads on every run and git ignores, for example `{ "budgetEmail": "you@example.com" }`. The `context` block of `packages/infra/cdk.json` works too, but it is tracked by git, so do not put your real email there in a public repo.
 
 ### Settings
 
