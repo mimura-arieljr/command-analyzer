@@ -96,6 +96,20 @@ describe('CommandForm', () => {
     expect(onAnalyze).toHaveBeenLastCalledWith(FIND_XARGS, 'zsh');
   });
 
+  it('changing the shell while editing does not re-run the old command', () => {
+    const { onAnalyze, rerender } = setup();
+    typeAndAnalyze('ls');
+    rerender({ result: findXargs(), analyzed: 'ls' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText(LABEL), { target: { value: 'rm -rf build' } });
+    fireEvent.change(screen.getByLabelText('Shell'), { target: { value: 'powershell' } });
+    expect(onAnalyze).toHaveBeenCalledTimes(1);
+    const box = screen.getByLabelText(LABEL) as HTMLTextAreaElement;
+    expect(box.value).toBe('rm -rf build');
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(onAnalyze).toHaveBeenLastCalledWith('rm -rf build', 'powershell');
+  });
+
   it('changing the shell before a result does not run anything', () => {
     const { onAnalyze } = setup();
     fireEvent.change(screen.getByLabelText('Shell'), { target: { value: 'zsh' } });

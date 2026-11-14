@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allTokenRanges, colourSpans, findInOrder, wordSpans } from '../src/tokens';
+import { allTokenRanges, colourSpans, findInOrder, symbolRanges, wordSpans } from '../src/tokens';
 import { FIND_XARGS, findXargs } from './fixtures';
 
 describe('findInOrder', () => {
@@ -82,5 +82,17 @@ describe('wordSpans', () => {
       [5, 8],
       [9, 10],
     ]);
+  });
+});
+
+describe('symbolRanges', () => {
+  it('an empty token matches nothing (and returns)', () => {
+    expect(symbolRanges('ls | wc', '')).toEqual([]);
+  });
+
+  it('an empty symbol from the model does not stop colouring', () => {
+    const a = findXargs();
+    a.glossary.symbols.push({ token: '', meaning: 'line break' });
+    expect(colourSpans(FIND_XARGS, a).length).toBeGreaterThan(0);
   });
 });

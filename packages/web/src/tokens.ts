@@ -39,6 +39,7 @@ export function allTokenRanges(text: string, token: string): Range[] {
 
 // Symbols such as * or 2>&1 can sit inside a word, so they match anywhere.
 export function symbolRanges(text: string, token: string): Range[] {
+  if (!token) return [];
   if (/[A-Za-z0-9]/.test(token)) return allTokenRanges(text, token);
   const out: Range[] = [];
   for (let at = text.indexOf(token); at >= 0; at = text.indexOf(token, at + token.length)) {

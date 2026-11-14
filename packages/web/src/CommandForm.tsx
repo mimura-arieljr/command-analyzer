@@ -125,7 +125,8 @@ export function CommandForm({ onAnalyze, onClear, busy, result, analyzed, highli
             onChange={(e) => {
               const next = e.target.value as Choice;
               setChoice(next);
-              if (result && analyzed !== null) run(analyzed, next);
+              // While editing, the pick applies to the next Analyze, not to the old command.
+              if (showView && result && analyzed !== null) run(analyzed, next);
             }}
           >
             <option value="auto">{autoLabel(result)}</option>
