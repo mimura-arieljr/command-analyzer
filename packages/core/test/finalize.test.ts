@@ -93,6 +93,8 @@ describe('rulesOnly', () => {
     const out = rulesOnly([], 'throttled');
     expect(out.model_error).toBe('throttled');
     expect(out.headline).toBe(RULES_CLEAN_HEADLINE);
+    expect(out.headline).toMatch(/Only the rule checks ran/);
+    expect(out.headline).toMatch(/does not mean it is safe/);
     expect(out.overall).toBe('none');
     expect(out.is_command).toBe(true);
     expect(out.glossary).toEqual({ commands: [], symbols: [] });

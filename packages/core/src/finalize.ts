@@ -14,7 +14,7 @@ import {
   type ShellInfo,
 } from './types';
 
-export const RULES_CLEAN_HEADLINE = 'No risky patterns found by the rule checks.';
+export const RULES_CLEAN_HEADLINE = 'Only the rule checks ran, and they found no known risky patterns. That does not mean it is safe.';
 
 export interface FinalizeOptions {
   // The shell the user forced in the picker.

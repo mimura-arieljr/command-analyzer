@@ -518,6 +518,13 @@ input[aria-invalid='true'] {
   --lvl-bg: var(--pill-medium-bg);
   --lvl-ink: var(--pill-medium-ink);
 }
+/* AI check failed and the rules found nothing: neither safe nor risky. */
+.banner.unchecked {
+  --lvl: var(--control);
+  --lvl-bg: var(--pill-none-bg);
+  --lvl-ink: var(--pill-none-ink);
+  border-left-style: dashed;
+}
 .banner .meter {
   height: 16px;
 }

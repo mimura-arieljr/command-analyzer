@@ -172,6 +172,23 @@ describe('special results', () => {
     expect(container.querySelector('.banner')).not.toBeNull();
   });
 
+  it('rules-only with no hits says not fully checked, not risk none', () => {
+    const a = rulesOnlyResult();
+    for (const k of Object.keys(a.risks) as (keyof typeof a.risks)[]) a.risks[k] = { level: 'none', findings: [] };
+    a.overall = 'none';
+    const { container } = show(a);
+    const banner = container.querySelector('.banner') as HTMLElement;
+    expect(banner.classList.contains('unchecked')).toBe(true);
+    expect(within(banner).getByText('Not fully checked')).toBeTruthy();
+    expect(banner.textContent).not.toContain('Risk: none');
+    expect(banner.querySelector('.areas')).toBeNull();
+  });
+
+  it('rules-only with hits still shows the rule level', () => {
+    const { container } = show(rulesOnlyResult());
+    expect((container.querySelector('.banner') as HTMLElement).textContent).toContain('Risk: high');
+  });
+
   it('no improvements section exists', () => {
     show();
     expect(screen.queryByText(/Improvements/i)).toBeNull();

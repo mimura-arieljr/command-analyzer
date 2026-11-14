@@ -48,6 +48,18 @@ function Badge({ level }: { level: Level }) {
 
 function VerdictBanner({ analysis }: { analysis: FinalAnalysis }) {
   const { overall } = analysis;
+  // The AI check failed and the rules found nothing: unknown, not safe.
+  const unchecked = !!analysis.model_error && overall === 'none';
+  if (unchecked) {
+    return (
+      <div className="banner unchecked rv" role="alert" style={{ '--i': 0 } as React.CSSProperties}>
+        <div className="top">
+          <span className="tag">Not fully checked</span>
+          <p>{analysis.headline}</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`banner ${overall} rv`} role="alert" style={{ '--i': 0 } as React.CSSProperties}>
       <div className="top">

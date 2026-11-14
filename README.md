@@ -60,7 +60,7 @@ There is one rule set per shell family: Unix (bash, zsh, sh), PowerShell and cmd
 - Rule findings are added after the model's. If the model already reported the same certain finding, the model's copy is dropped so it is not listed twice.
 - If the rules raised the overall level above the model's, the headline is replaced by the top rule finding, so the banner never reads as safe while a rule found danger.
 - If the model says the text is not a command but the rules find a medium or high risk, the results are shown anyway.
-- If the model call fails (throttled, timed out, bad output), the page still shows the rule-check verdict and findings, with a note and a Retry button.
+- If the model call fails (throttled, timed out, bad output), the page still shows the rule-check verdict and findings, with a note and a Retry button. If the rules found nothing either, the banner says "Not fully checked" instead of "Risk: none", because the rules only know the patterns written into them.
 
 The merge lives in `packages/core/src/finalize.ts`.
 
