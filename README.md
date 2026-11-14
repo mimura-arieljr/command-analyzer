@@ -13,13 +13,15 @@ It does not suggest improvements or rewrite the command. It explains and assesse
 
 ### What the page shows
 
-1. **Verdict:** the overall risk level and one sentence naming the worst thing the command does, with a level for each of five areas: data loss, system changes, network, elevated rights and hidden behaviour.
-2. **Risk cards:** one per area with findings. Each finding says whether it is certain or possible, whether it came from a rule check or the AI, what it depends on that the tool cannot see (the current folder, a variable's value), and a safe way to check it first.
-3. **What it does:** the detected shell, how sure it is, and a one-line summary.
-4. **Commands, flags and symbols:** each program in the command with a general meaning, its flags nested under it, and shell symbols (`|`, `>`, `&&`, `$(...)` and so on) in their own group.
+The result is laid out like a hazard label, as cards around the command:
+
+1. **Verdict label:** a signal word (Danger, Warning, Caution or No known risks), the level, and one sentence naming the worst thing the command does. A diamond pictogram marks each area at risk, and a strip lists the level for all five areas: data loss, system changes, network, elevated rights and hidden behaviour. If the AI check failed and the rule checks found nothing, the label says "Not fully checked" instead.
+2. **What it does:** a one-line summary, the detected shell and how sure it is.
+3. **What could go wrong:** findings grouped by area, worst first. Each says whether it is certain or possible, whether it came from a rule check or the AI, what it depends on that the tool cannot see (the current folder, a variable's value), and a safe way to check it first.
+4. **Parts:** each program in the command with a general meaning, its flags nested under it, and shell symbols (`|`, `>`, `&&`, `$(...)` and so on), each tagged Command, Flag or Symbol.
 5. **Step by step:** a numbered table of what each part does here, with joining symbols on their own rows.
 
-Hovering or focusing a glossary row, a step or a finding outlines that part of the command in the box on the left. The shell picker shows the detected shell; picking another shell runs the analysis again with that shell.
+Hovering or focusing a finding, a part or a step highlights that part of the command. Once the command card scrolls out of view, a slim copy stays pinned to the top so the highlight is still visible. The shell picker shows the detected shell; picking another shell runs the analysis again with that shell.
 
 ### Risk levels
 

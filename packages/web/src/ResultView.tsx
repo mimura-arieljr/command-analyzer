@@ -9,11 +9,13 @@ import {
   type Level,
 } from '@ca/core/types';
 import { SHELL_LABEL } from './CommandForm';
+import { Diamond } from './Diamond';
 import { allTokenRanges, findInOrder, symbolRanges, type Range } from './tokens';
 
-const LEVEL_BARS: Record<Level, number> = { none: 0, low: 1, medium: 2, high: 3 };
-const LEVEL_LABEL: Record<Level, string> = { none: 'None', low: 'Low', medium: 'Medium', high: 'High' };
-const LEVEL_RANK = LEVEL_BARS;
+const LEVEL_RANK: Record<Level, number> = { none: 0, low: 1, medium: 2, high: 3 };
+// Hazard-label signal words, loudest first.
+const SIGNAL: Record<Level, string> = { high: 'Danger', medium: 'Warning', low: 'Caution', none: 'No known risks' };
+const LEVEL_LINE: Record<Level, string> = { high: 'High risk', medium: 'Medium risk', low: 'Low risk', none: '' };
 
 type Highlight = (ranges: Range[]) => void;
 
@@ -26,55 +28,58 @@ function hoverProps(onHighlight: Highlight, ranges: () => Range[]) {
 
 const present = (r: Range | null): Range[] => (r ? [r] : []);
 
-// Three rising bars, filled up to the level; the label stays the accessible text.
-export function Meter({ level }: { level: Level }) {
-  return (
-    <span className="meter" aria-hidden="true">
-      {[1, 2, 3].map((n) => (
-        <i key={n} className={n <= LEVEL_BARS[level] ? 'on' : undefined} />
-      ))}
-    </span>
-  );
+// Areas from highest level to lowest; ties keep the area order (data loss first).
+function byLevel(analysis: FinalAnalysis, areas: readonly Area[]): Area[] {
+  return [...areas].sort((x, y) => LEVEL_RANK[analysis.risks[y].level] - LEVEL_RANK[analysis.risks[x].level]);
 }
 
-function Badge({ level }: { level: Level }) {
-  return (
-    <span className={`badge ${level}`}>
-      <Meter level={level} />
-      {LEVEL_LABEL[level]}
-    </span>
-  );
-}
-
-function VerdictBanner({ analysis }: { analysis: FinalAnalysis }) {
+function HazardLabel({ analysis }: { analysis: FinalAnalysis }) {
   const { overall } = analysis;
   // The AI check failed and the rules found nothing: unknown, not safe.
-  const unchecked = !!analysis.model_error && overall === 'none';
-  if (unchecked) {
+  if (analysis.model_error && overall === 'none') {
     return (
-      <div className="banner unchecked rv" role="alert" style={{ '--i': 0 } as React.CSSProperties}>
-        <div className="top">
-          <span className="tag">Not fully checked</span>
-          <p>{analysis.headline}</p>
+      <div className="hazard unchecked" role="alert">
+        <div className="hazard-main">
+          <div className="pictos">
+            <div className="picto">
+              <Diamond area="unknown" level="none" size={72} dashed />
+              <span>Unknown</span>
+            </div>
+          </div>
+          <div>
+            <p className="signal">Not fully checked</p>
+            <p className="headline">{analysis.headline}</p>
+          </div>
         </div>
       </div>
     );
   }
+  const atRisk = byLevel(analysis, AREAS).filter((a) => analysis.risks[a].level !== 'none');
   return (
-    <div className={`banner ${overall} rv`} role="alert" style={{ '--i': 0 } as React.CSSProperties}>
-      <div className="top">
-        <span className={overall === 'high' ? 'tag pulse' : 'tag'}>
-          <Meter level={overall} />
-          Risk: {overall}
-        </span>
-        <p>{analysis.headline}</p>
+    <div className={`hazard ${overall}`} role="alert">
+      <div className="hazard-main">
+        {atRisk.length > 0 && (
+          <div className="pictos">
+            {atRisk.map((a) => (
+              <div key={a} className="picto">
+                <Diamond area={a} level={analysis.risks[a].level} size={72} />
+                <span>{AREA_LABEL[a]}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div>
+          <p className="signal">{SIGNAL[overall]}</p>
+          {LEVEL_LINE[overall] && <p className="level">{LEVEL_LINE[overall]}</p>}
+          <p className="headline">{analysis.headline}</p>
+        </div>
       </div>
       <ul className="areas" aria-label="Risk by area">
         {AREAS.map((a) => (
           <li key={a} className={`area ${analysis.risks[a].level}`}>
-            <Meter level={analysis.risks[a].level} />
-            {AREA_LABEL[a]}
-            <span className="sr-only">: {analysis.risks[a].level}</span>
+            <Diamond area={a} level={analysis.risks[a].level} size={16} />
+            <b>{AREA_LABEL[a]}</b>
+            <em>{analysis.risks[a].level}</em>
           </li>
         ))}
       </ul>
@@ -83,28 +88,26 @@ function VerdictBanner({ analysis }: { analysis: FinalAnalysis }) {
 }
 
 function FindingItem({ finding, command, onHighlight }: { finding: FinalFinding; command: string; onHighlight: Highlight }) {
-  const certain = finding.certainty === 'certain';
   return (
-    <div
-      className={`finding ${finding.certainty}`}
-      {...hoverProps(onHighlight, () => present(findInOrder(command, [finding.snippet])[0]))}
-    >
-      <div className="row">
-        <span className="tag-s">{certain ? 'Certain' : 'Possible'}</span>
-        <span className={finding.source === 'rule' ? 'tag-s rule' : 'tag-s'}>{finding.source === 'rule' ? 'Rule check' : 'AI'}</span>
-      </div>
-      {finding.reason}
+    <div className="finding link" {...hoverProps(onHighlight, () => present(findInOrder(command, [finding.snippet])[0]))}>
+      <p className="statement">{finding.reason}</p>
+      <p className="source">
+        <b>{finding.certainty === 'certain' ? 'Certain.' : 'Possible.'}</b>{' '}
+        {finding.source === 'rule' ? 'Found by the rule checks.' : 'Flagged by the AI.'}
+      </p>
       {(finding.depends_on || finding.how_to_verify) && (
-        <dl>
+        <dl className="facts">
           {finding.depends_on && (
-            <div>
-              <dt>Depends on:</dt> <dd>{finding.depends_on}</dd>
-            </div>
+            <>
+              <dt>Depends on</dt>
+              <dd>{finding.depends_on}</dd>
+            </>
           )}
           {finding.how_to_verify && (
-            <div>
-              <dt>Check it:</dt> <dd>{finding.how_to_verify}</dd>
-            </div>
+            <>
+              <dt>Check first</dt>
+              <dd>{finding.how_to_verify}</dd>
+            </>
           )}
         </dl>
       )}
@@ -112,66 +115,74 @@ function FindingItem({ finding, command, onHighlight }: { finding: FinalFinding;
   );
 }
 
-// Areas with findings, highest level first; ties keep the area order (data loss first).
-function cardAreas(analysis: FinalAnalysis): Area[] {
-  return AREAS.filter((a) => analysis.risks[a].findings.length > 0).sort(
-    (x, y) => LEVEL_RANK[analysis.risks[y].level] - LEVEL_RANK[analysis.risks[x].level],
+function RisksCard({ analysis, command, onHighlight }: { analysis: FinalAnalysis; command: string; onHighlight: Highlight }) {
+  const areas = byLevel(
+    analysis,
+    AREAS.filter((a) => analysis.risks[a].findings.length > 0),
   );
-}
-
-function RiskCard({ area, analysis, command, onHighlight, index }: { area: Area; analysis: FinalAnalysis; command: string; onHighlight: Highlight; index: number }) {
-  const { level, findings } = analysis.risks[area];
+  // The stripe takes the colour of the worst group.
+  const top = analysis.risks[areas[0]].level;
   return (
-    <div className="card risk-card rv" style={{ '--i': index } as React.CSSProperties}>
-      <div className="cat-head">
-        <h2>{AREA_LABEL[area]}</h2>
-        <Badge level={level} />
-      </div>
-      {findings.map((f, i) => (
-        <FindingItem key={i} finding={f} command={command} onHighlight={onHighlight} />
-      ))}
-    </div>
+    <section className={`card risks ${top} reveal`}>
+      <h2>What could go wrong</h2>
+      {areas.map((a) => {
+        const { level, findings } = analysis.risks[a];
+        return (
+          <div key={a} className="group">
+            <h3>
+              <Diamond area={a} level={level} size={16} />
+              <span className="name">{AREA_LABEL[a]}</span> <em>{level}</em>
+            </h3>
+            {findings.map((f, i) => (
+              <FindingItem key={i} finding={f} command={command} onHighlight={onHighlight} />
+            ))}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
-function WhatItDoes({ analysis, index }: { analysis: FinalAnalysis; index: number }) {
+function WhatItDoes({ analysis }: { analysis: FinalAnalysis }) {
   const { shell } = analysis;
   return (
-    <div className="card rv" style={{ '--i': index } as React.CSSProperties}>
+    <section className="card summary reveal">
       <h2>What it does</h2>
-      <div className="meta">
-        {shell.name !== 'unknown' && <span className="chip accent">{SHELL_LABEL[shell.name]}</span>}
-        <span className="chip">Confidence: {shell.confidence}</span>
-      </div>
-      {shell.note && <p className="muted note-line">{shell.note}</p>}
-      <p>{analysis.what_it_does}</p>
-    </div>
+      <p className="does">{analysis.what_it_does}</p>
+      <p className="does-shell">
+        {shell.name === 'unknown' ? 'Shell not detected.' : `${SHELL_LABEL[shell.name]}, ${shell.confidence} confidence.`}
+      </p>
+      {shell.note && <p className="does-shell">{shell.note}</p>}
+    </section>
   );
 }
 
-function TypeTag({ kind }: { kind: 'cmd' | 'flag' | 'sym' }) {
-  return <span className={`ty ${kind}`}>{kind === 'cmd' ? 'Command' : kind === 'flag' ? 'Flag' : 'Symbol'}</span>;
+function TokenCell({ token, kind }: { token: string; kind: 'command' | 'flag' | 'symbol' }) {
+  return (
+    <span className="tok-cell">
+      <code className={kind}>{token}</code>
+      <span className={`ty ${kind}`}>{kind === 'command' ? 'Command' : kind === 'flag' ? 'Flag' : 'Symbol'}</span>
+    </span>
+  );
 }
 
 function CommandRow({ c, command, onHighlight }: { c: GlossaryCommand; command: string; onHighlight: Highlight }) {
   return (
     <li>
-      <div className="ln" {...hoverProps(onHighlight, () => allTokenRanges(command, c.name))}>
-        <TypeTag kind="cmd" />
+      <div className="ln link" {...hoverProps(onHighlight, () => allTokenRanges(command, c.name))}>
+        <TokenCell token={c.name} kind="command" />
         <span>
-          <code className="c">{c.name}</code> {c.meaning}
+          {c.meaning}
           {c.alias_note && <span className="alias">{c.alias_note}</span>}
         </span>
       </div>
       {c.flags.length > 0 && (
-        <ul>
+        <ul className="flags">
           {c.flags.map((f, i) => (
             <li key={i}>
-              <div className="ln" {...hoverProps(onHighlight, () => allTokenRanges(command, f.token))}>
-                <TypeTag kind="flag" />
-                <span>
-                  <code className="f">{f.token}</code> {f.meaning}
-                </span>
+              <div className="ln link" {...hoverProps(onHighlight, () => allTokenRanges(command, f.token))}>
+                <TokenCell token={f.token} kind="flag" />
+                <span>{f.meaning}</span>
               </div>
             </li>
           ))}
@@ -181,75 +192,61 @@ function CommandRow({ c, command, onHighlight }: { c: GlossaryCommand; command: 
   );
 }
 
-function Glossary({ analysis, command, onHighlight, index }: { analysis: FinalAnalysis; command: string; onHighlight: Highlight; index: number }) {
+function Parts({ analysis, command, onHighlight }: { analysis: FinalAnalysis; command: string; onHighlight: Highlight }) {
   const { commands, symbols } = analysis.glossary;
   return (
-    <div className="card rv" style={{ '--i': index } as React.CSSProperties}>
-      <h2>Commands, flags and symbols</h2>
+    <section className="card glossary reveal">
+      <h2>Parts</h2>
       <ul className="gl">
         {commands.map((c, i) => (
           <CommandRow key={i} c={c} command={command} onHighlight={onHighlight} />
         ))}
         {symbols.map((s, i) => (
-          <li key={`s${i}`}>
-            <div className="ln" {...hoverProps(onHighlight, () => symbolRanges(command, s.token))}>
-              <TypeTag kind="sym" />
-              <span>
-                <code className="s">{s.token}</code> {s.meaning}
-              </span>
+          <li key={`s${i}`} className={i === 0 ? 'sym first' : 'sym'}>
+            <div className="ln link" {...hoverProps(onHighlight, () => symbolRanges(command, s.token))}>
+              <TokenCell token={s.token} kind="symbol" />
+              <span>{s.meaning}</span>
             </div>
           </li>
         ))}
       </ul>
       <p className="tip">Hover or focus a row to find it in your command.</p>
-    </div>
+    </section>
   );
 }
 
-function StepsTable({ analysis, command, onHighlight, index }: { analysis: FinalAnalysis; command: string; onHighlight: Highlight; index: number }) {
+function StepsTable({ analysis, command, onHighlight }: { analysis: FinalAnalysis; command: string; onHighlight: Highlight }) {
   const { steps } = analysis;
   const ranges = findInOrder(command, steps.map((s) => s.snippet));
   let n = 0;
   return (
-    <div className="card rv" style={{ '--i': index } as React.CSSProperties}>
+    <section className="card sequence reveal">
       <h2>Step by step</h2>
       <table className="steps">
-        <thead>
+        <thead className="sr-only">
           <tr>
-            <th className="num">
-              <span className="sr-only">Step</span>
-            </th>
-            <th className="part">Part</th>
+            <th>Step</th>
+            <th>Part</th>
             <th>What it does</th>
           </tr>
         </thead>
         <tbody>
           {steps.map((s, i) => {
-            const hover = hoverProps(onHighlight, () => present(ranges[i]));
-            if (s.kind === 'joiner') {
-              return (
-                <tr key={i} className="joiner" {...hover}>
-                  <td className="num"></td>
-                  <td colSpan={2}>
-                    <code>{s.snippet}</code> {s.explanation}
-                  </td>
-                </tr>
-              );
-            }
-            n += 1;
+            const joiner = s.kind === 'joiner';
+            if (!joiner) n += 1;
             return (
-              <tr key={i} {...hover}>
-                <td className="num">{n}</td>
-                <td>
+              <tr key={i} className={joiner ? 'link joiner' : 'link'} {...hoverProps(onHighlight, () => present(ranges[i]))}>
+                <td className="num">{joiner ? '' : n}</td>
+                <td className="snip">
                   <code>{s.snippet}</code>
                 </td>
-                <td>{s.explanation}</td>
+                <td className="exp">{s.explanation}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }
 
@@ -261,37 +258,44 @@ interface Props {
   onRetry: () => void;
 }
 
+// Which cards a result shows, for the bento grid.
+export function resultCards(analysis: FinalAnalysis) {
+  const ok = analysis.is_command;
+  const full = ok && !analysis.model_error;
+  return {
+    does: ok && (!!analysis.model_error || !!analysis.what_it_does),
+    risk: ok && AREAS.some((a) => analysis.risks[a].findings.length > 0),
+    parts: full && analysis.glossary.commands.length + analysis.glossary.symbols.length > 0,
+    steps: full && analysis.steps.length > 0,
+  };
+}
+
+// The result as separate grid items: the label, then cards placed by grid area.
 export function ResultView({ analysis, command, onHighlight, onRetry }: Props) {
   if (!analysis.is_command) {
     return (
-      <div className="card rv" style={{ '--i': 0 } as React.CSSProperties}>
+      <section className="card notcmd hazard-slot">
         <p>{analysis.not_a_command_message}</p>
-      </div>
+      </section>
     );
   }
-  const areas = cardAreas(analysis);
-  let i = 1 + areas.length;
-  const hasGlossary = analysis.glossary.commands.length + analysis.glossary.symbols.length > 0;
+  const cards = resultCards(analysis);
   return (
     <>
-      <VerdictBanner analysis={analysis} />
-      {areas.map((a, k) => (
-        <RiskCard key={a} area={a} analysis={analysis} command={command} onHighlight={onHighlight} index={k + 1} />
-      ))}
+      <HazardLabel analysis={analysis} />
       {analysis.model_error ? (
-        <div className="card note rv" style={{ '--i': i } as React.CSSProperties}>
+        <section className="card note reveal">
           <p>The explanation isn't available right now. These results come from the rule checks only.</p>
-          <button type="button" className="btn-ghost small" onClick={onRetry}>
+          <button type="button" className="btn" onClick={onRetry}>
             Retry
           </button>
-        </div>
+        </section>
       ) : (
-        <>
-          {analysis.what_it_does && <WhatItDoes analysis={analysis} index={i++} />}
-          {hasGlossary && <Glossary analysis={analysis} command={command} onHighlight={onHighlight} index={i++} />}
-          {analysis.steps.length > 0 && <StepsTable analysis={analysis} command={command} onHighlight={onHighlight} index={i++} />}
-        </>
+        cards.does && <WhatItDoes analysis={analysis} />
       )}
+      {cards.risk && <RisksCard analysis={analysis} command={command} onHighlight={onHighlight} />}
+      {cards.parts && <Parts analysis={analysis} command={command} onHighlight={onHighlight} />}
+      {cards.steps && <StepsTable analysis={analysis} command={command} onHighlight={onHighlight} />}
     </>
   );
 }

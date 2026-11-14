@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FinalAnalysis } from '@ca/core/types';
 import { CommandForm } from '../src/CommandForm';
 import { FIND_XARGS, findXargs } from './fixtures';
+import { pickShell, shellPicker } from './select';
 
 const LABEL = 'Paste a shell command';
 
@@ -54,7 +55,7 @@ describe('CommandForm', () => {
 
   it('Analyze sends the picked shell', () => {
     const { onAnalyze } = setup();
-    fireEvent.change(screen.getByLabelText('Shell'), { target: { value: 'powershell' } });
+    pickShell('PowerShell');
     typeAndAnalyze('rm -r x');
     expect(onAnalyze).toHaveBeenCalledWith('rm -r x', 'powershell');
   });
@@ -84,15 +85,27 @@ describe('CommandForm', () => {
     const { rerender } = setup();
     typeAndAnalyze(FIND_XARGS);
     rerender({ result: findXargs(), analyzed: FIND_XARGS });
-    const auto = screen.getByRole('option', { name: 'bash (detected, high)' }) as HTMLOptionElement;
-    expect(auto.selected).toBe(true);
+    expect(shellPicker().textContent).toContain('bash (auto)');
+    fireEvent.keyDown(shellPicker(), { key: 'Enter' });
+    const auto = screen.getByRole('option', { name: /Auto-detect/ });
+    expect(auto.textContent).toContain('Detected bash, high confidence');
+    expect(auto.getAttribute('data-state')).toBe('checked');
+  });
+
+  it('puts Analyze, Edit, Clear and the shell picker in one row', () => {
+    const { rerender } = setup();
+    typeAndAnalyze(FIND_XARGS);
+    rerender({ result: findXargs(), analyzed: FIND_XARGS });
+    const row = screen.getByRole('button', { name: 'Analyze' }).closest('.actions');
+    for (const name of ['Edit', 'Clear']) expect(screen.getByRole('button', { name }).closest('.actions')).toBe(row);
+    expect(shellPicker().closest('.actions')).toBe(row);
   });
 
   it('changing the shell after a result re-runs the analysis', () => {
     const { onAnalyze, rerender } = setup();
     typeAndAnalyze(FIND_XARGS);
     rerender({ result: findXargs(), analyzed: FIND_XARGS });
-    fireEvent.change(screen.getByLabelText('Shell'), { target: { value: 'zsh' } });
+    pickShell('zsh');
     expect(onAnalyze).toHaveBeenLastCalledWith(FIND_XARGS, 'zsh');
   });
 
@@ -102,7 +115,7 @@ describe('CommandForm', () => {
     rerender({ result: findXargs(), analyzed: 'ls' });
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     fireEvent.change(screen.getByLabelText(LABEL), { target: { value: 'rm -rf build' } });
-    fireEvent.change(screen.getByLabelText('Shell'), { target: { value: 'powershell' } });
+    pickShell('PowerShell');
     expect(onAnalyze).toHaveBeenCalledTimes(1);
     const box = screen.getByLabelText(LABEL) as HTMLTextAreaElement;
     expect(box.value).toBe('rm -rf build');
@@ -112,7 +125,7 @@ describe('CommandForm', () => {
 
   it('changing the shell before a result does not run anything', () => {
     const { onAnalyze } = setup();
-    fireEvent.change(screen.getByLabelText('Shell'), { target: { value: 'zsh' } });
+    pickShell('zsh');
     expect(onAnalyze).not.toHaveBeenCalled();
   });
 
@@ -150,12 +163,18 @@ describe('CommandForm', () => {
     setup();
     const button = screen.getByRole('button', { name: 'Analyze' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(screen.getByText('0 / 5,000 characters')).toBeTruthy();
     fireEvent.change(screen.getByLabelText(LABEL), { target: { value: 'a'.repeat(5000) } });
     expect(button.disabled).toBe(false);
     fireEvent.change(screen.getByLabelText(LABEL), { target: { value: 'a'.repeat(5001) } });
     expect(button.disabled).toBe(true);
-    expect(screen.getByText('5,001 / 5,000 characters')).toBeTruthy();
+  });
+
+  it('shows no character counter, only a message once the text is too long', () => {
+    setup();
+    fireEvent.change(screen.getByLabelText(LABEL), { target: { value: 'ls' } });
+    expect(screen.queryByText(/characters/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(LABEL), { target: { value: 'a'.repeat(5001) } });
+    expect(screen.getByRole('alert').textContent).toBe('Too long: the limit is 5,000 characters.');
   });
 
   it('Clear empties the text and calls onClear', () => {

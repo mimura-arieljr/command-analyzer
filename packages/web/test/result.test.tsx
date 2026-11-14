@@ -19,13 +19,32 @@ describe('verdict', () => {
   it('shows the verdict headline and level first', () => {
     const { container } = show();
     const first = container.firstElementChild as HTMLElement;
-    expect(first.textContent).toContain('Risk: high');
+    expect(first.classList.contains('hazard')).toBe(true);
+    expect(first.textContent).toContain('Danger');
+    expect(first.textContent).toContain('High risk');
     expect(first.textContent).toContain(findXargs().headline);
   });
 
-  it('shows a pill for every area and cards only for areas with findings', () => {
+  it('uses a signal word for each level', () => {
+    const signal = (overall: FinalAnalysis['overall']) => {
+      cleanup();
+      const { container } = show(findXargs({ overall }));
+      return container.querySelector('.hazard .signal')?.textContent;
+    };
+    expect([signal('high'), signal('medium'), signal('low'), signal('none')]).toEqual(['Danger', 'Warning', 'Caution', 'No known risks']);
+  });
+
+  it('shows a pictogram for each area at risk', () => {
+    const a = findXargs();
+    a.risks.elevated_rights = { level: 'medium', findings: [] };
+    const { container } = show(a);
+    const names = [...container.querySelectorAll('.hazard .picto span')].map((e) => e.textContent);
+    expect(names).toEqual(['Data loss', 'Elevated rights']);
+  });
+
+  it('lists every area in the label and groups only areas with findings', () => {
     const { container } = show();
-    const pills = [...container.querySelectorAll('.areas .area')].map((e) => e.textContent);
+    const pills = [...container.querySelectorAll('.hazard .areas .area')].map((e) => e.textContent);
     expect(pills).toEqual([
       expect.stringContaining('Data loss'),
       expect.stringContaining('System changes'),
@@ -33,41 +52,40 @@ describe('verdict', () => {
       expect.stringContaining('Elevated rights'),
       expect.stringContaining('Hidden behaviour'),
     ]);
-    const cards = [...container.querySelectorAll('.risk-card h2')].map((e) => e.textContent);
-    expect(cards).toEqual(['Data loss']);
+    const groups = [...container.querySelectorAll('.risks h3 .name')].map((e) => e.textContent);
+    expect(groups).toEqual(['Data loss']);
   });
 
-  it('orders risk cards by level', () => {
+  it('orders risk groups by level', () => {
     const a = findXargs();
     a.risks.network = { level: 'high', findings: [finding({ reason: 'Downloads.', snippet: '' })] };
     a.risks.data_loss.level = 'medium';
     const { container } = show(a);
-    const cards = [...container.querySelectorAll('.risk-card h2')].map((e) => e.textContent);
-    expect(cards).toEqual(['Network', 'Data loss']);
+    const groups = [...container.querySelectorAll('.risks h3 .name')].map((e) => e.textContent);
+    expect(groups).toEqual(['Network', 'Data loss']);
   });
 
-  it('labels certainty, source, depends on and check it', () => {
+  it('labels certainty, source, depends on and check first', () => {
     show();
-    expect(screen.getByText('Certain')).toBeTruthy();
-    expect(screen.getByText('Possible')).toBeTruthy();
-    expect(screen.getByText('Rule check')).toBeTruthy();
-    expect(screen.getByText('AI')).toBeTruthy();
-    expect(screen.getByText('Depends on:')).toBeTruthy();
-    expect(screen.getByText('Check it:')).toBeTruthy();
+    expect(screen.getByText('Certain.')).toBeTruthy();
+    expect(screen.getByText('Possible.')).toBeTruthy();
+    expect(screen.getByText('Found by the rule checks.')).toBeTruthy();
+    expect(screen.getByText('Flagged by the AI.')).toBeTruthy();
+    expect(screen.getAllByText('Depends on').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Check first').length).toBeGreaterThan(0);
   });
 
   it('renders model text as plain text, not HTML', () => {
     const { container } = show(findXargs({ headline: '<b>bold</b>' }));
-    expect(container.querySelector('.banner b')).toBeNull();
+    expect(container.querySelector('.hazard .headline b')).toBeNull();
     expect(screen.getByText('<b>bold</b>')).toBeTruthy();
   });
 });
 
 describe('what it does', () => {
-  it('shows the shell and confidence chips and the summary', () => {
+  it('shows the shell, its confidence and the summary', () => {
     show();
-    expect(screen.getByText('bash')).toBeTruthy();
-    expect(screen.getByText('Confidence: high')).toBeTruthy();
+    expect(screen.getByText('bash, high confidence.')).toBeTruthy();
     expect(screen.getByText(findXargs().what_it_does)).toBeTruthy();
   });
 
@@ -159,7 +177,7 @@ describe('special results', () => {
   it('not a command shows only the message', () => {
     const { container } = show(notACommand(), 'hello there');
     expect(screen.getByText('This looks like a sentence, not a command.')).toBeTruthy();
-    expect(container.querySelector('.banner')).toBeNull();
+    expect(container.querySelector('.hazard')).toBeNull();
   });
 
   it('rules-only result shows the note and Retry', () => {
@@ -169,7 +187,7 @@ describe('special results', () => {
     expect(onRetry).toHaveBeenCalled();
     expect(container.querySelector('.gl')).toBeNull();
     expect(container.querySelector('.steps')).toBeNull();
-    expect(container.querySelector('.banner')).not.toBeNull();
+    expect(container.querySelector('.hazard')).not.toBeNull();
   });
 
   it('rules-only with no hits says not fully checked, not risk none', () => {
@@ -177,16 +195,16 @@ describe('special results', () => {
     for (const k of Object.keys(a.risks) as (keyof typeof a.risks)[]) a.risks[k] = { level: 'none', findings: [] };
     a.overall = 'none';
     const { container } = show(a);
-    const banner = container.querySelector('.banner') as HTMLElement;
-    expect(banner.classList.contains('unchecked')).toBe(true);
-    expect(within(banner).getByText('Not fully checked')).toBeTruthy();
-    expect(banner.textContent).not.toContain('Risk: none');
-    expect(banner.querySelector('.areas')).toBeNull();
+    const label = container.querySelector('.hazard') as HTMLElement;
+    expect(label.classList.contains('unchecked')).toBe(true);
+    expect(within(label).getByText('Not fully checked')).toBeTruthy();
+    expect(label.textContent).not.toContain('No known risks');
+    expect(label.querySelector('.areas')).toBeNull();
   });
 
   it('rules-only with hits still shows the rule level', () => {
     const { container } = show(rulesOnlyResult());
-    expect((container.querySelector('.banner') as HTMLElement).textContent).toContain('Risk: high');
+    expect((container.querySelector('.hazard') as HTMLElement).textContent).toContain('Danger');
   });
 
   it('no improvements section exists', () => {
@@ -199,7 +217,7 @@ describe('special results', () => {
     for (const k of Object.keys(a.risks) as (keyof typeof a.risks)[]) a.risks[k] = { level: 'none', findings: [] };
     a.overall = 'none';
     const { container } = show(a);
-    expect(within(container.querySelector('.banner') as HTMLElement).getByText('Risk: none')).toBeTruthy();
-    expect(container.querySelector('.risk-card')).toBeNull();
+    expect(within(container.querySelector('.hazard') as HTMLElement).getByText('No known risks')).toBeTruthy();
+    expect(container.querySelector('.risks')).toBeNull();
   });
 });

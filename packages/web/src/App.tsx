@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ErrorCode, FinalAnalysis } from '@ca/core/types';
 import { Mark } from './Mark';
 import { CommandForm } from './CommandForm';
-import { ResultView } from './ResultView';
+import { CommandStrip } from './CommandStrip';
+import { bentoAreas } from './layout';
+import { ResultView, resultCards } from './ResultView';
 import { useScan } from './motion';
-import { wordSpans, type Range } from './tokens';
+import { colourSpans, wordSpans, type Range } from './tokens';
 import { WaitPanel } from './WaitPanel';
 import { UnlockGate } from './UnlockGate';
 import { useAnalyzer } from './useAnalyzer';
@@ -72,34 +74,44 @@ function Workspace({ secret, onUnauthorized }: { secret: string; onUnauthorized:
     if (error === 'unauthorized') onUnauthorized();
   }, [error, onUnauthorized]);
 
+  const view = status === 'done' && result && !waiting ? result : null;
+  const cards = view ? resultCards(view) : { does: false, risk: false, parts: false, steps: false };
+  const areas = bentoAreas(cards);
+  const formRef = useRef<HTMLFormElement>(null);
+  const stripSpans = useMemo(() => (view && command ? colourSpans(command, view) : []), [view, command]);
+
   return (
-    <div className="workspace">
-      <CommandForm
-        onAnalyze={run}
-        onClear={clear}
-        busy={waiting}
-        result={status === 'done' && !waiting ? result : null}
-        analyzed={command}
-        highlight={highlight}
-        scanIndex={scanIndex}
-      />
-      <div className="out">
+    <>
+      <div className="workspace" style={{ '--areas': areas.wide, '--areas-narrow': areas.narrow } as CSSProperties}>
+        <CommandForm
+          formRef={formRef}
+          onAnalyze={run}
+          onClear={clear}
+          busy={waiting}
+          result={view}
+          analyzed={command}
+          highlight={highlight}
+          scanIndex={scanIndex}
+        />
         {status === 'idle' && (
-          <div className="placeholder" aria-hidden="true">
-            The verdict, the commands it uses and each step appear here.
+          <div className="placeholder hazard-slot" aria-hidden="true">
+            <p>The verdict appears here, then what the command does, what could go wrong, its parts and each step.</p>
           </div>
         )}
-        <section className="result" aria-live="polite">
-          {waiting && <WaitPanel done={status === 'done'} onFinished={onFinished} onStep={setWaitStep} />}
-          {status === 'error' && error && error !== 'unauthorized' && (
-            <p className="error">{ERROR_TEXT[error]}</p>
-          )}
-          {status === 'done' && result && !waiting && (
-            <ResultView analysis={result} command={command ?? ''} onHighlight={onHighlight} onRetry={retry} />
-          )}
-        </section>
+        {waiting && <WaitPanel done={status === 'done'} onFinished={onFinished} onStep={setWaitStep} />}
+        {status === 'error' && error && error !== 'unauthorized' && (
+          <div className="card hazard-slot error-card">
+            <p className="error" role="alert">
+              {ERROR_TEXT[error]}
+            </p>
+          </div>
+        )}
+        {view && <ResultView analysis={view} command={command ?? ''} onHighlight={onHighlight} onRetry={retry} />}
       </div>
-    </div>
+      {view && view.is_command && command && (
+        <CommandStrip target={formRef} text={command} spans={stripSpans} highlight={highlight} />
+      )}
+    </>
   );
 }
 
@@ -119,7 +131,7 @@ export function App() {
         {secret !== null && (
           <h1>
             <Mark />
-            Command <span>Analyzer</span>
+            <span>Command Analyzer</span>
           </h1>
         )}
         <button

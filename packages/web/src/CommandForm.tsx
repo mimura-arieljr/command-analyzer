@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import * as Select from '@radix-ui/react-select';
 import { MAX_COMMAND_CHARS, SHELLS, type FinalAnalysis, type Shell } from '@ca/core/types';
 import { CommandView } from './CommandView';
 import { colourSpans, wordSpans, type Range } from './tokens';
-
-const nf = new Intl.NumberFormat('en-US');
 
 export const SHELL_LABEL: Record<Shell, string> = {
   bash: 'bash',
@@ -24,14 +23,47 @@ interface Props {
   analyzed: string | null;
   highlight: Range[];
   scanIndex: number | null;
+  formRef?: Ref<HTMLFormElement>;
 }
 
-function autoLabel(result: FinalAnalysis | null): string {
+// What the closed picker shows.
+function shownChoice(choice: Choice, result: FinalAnalysis | null): string {
+  if (choice !== 'auto') return SHELL_LABEL[choice];
   if (!result || result.shell.name === 'unknown') return 'Auto-detect';
-  return `${SHELL_LABEL[result.shell.name]} (detected, ${result.shell.confidence})`;
+  return `${SHELL_LABEL[result.shell.name]} (auto)`;
 }
 
-export function CommandForm({ onAnalyze, onClear, busy, result, analyzed, highlight, scanIndex }: Props) {
+function Chevron() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function Check() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
+function ShellOption({ value, text, hint }: { value: Choice; text: string; hint?: string }) {
+  return (
+    <Select.Item value={value} className="shell-item">
+      <span className="shell-item-text">
+        <Select.ItemText>{text}</Select.ItemText>
+        {hint && <span className="hint">{hint}</span>}
+      </span>
+      <Select.ItemIndicator className="tick">
+        <Check />
+      </Select.ItemIndicator>
+    </Select.Item>
+  );
+}
+
+export function CommandForm({ onAnalyze, onClear, busy, result, analyzed, highlight, scanIndex, formRef }: Props) {
   const [text, setText] = useState('');
   const [editing, setEditing] = useState(true);
   const [choice, setChoice] = useState<Choice>('auto');
@@ -67,6 +99,7 @@ export function CommandForm({ onAnalyze, onClear, busy, result, analyzed, highli
 
   return (
     <form
+      ref={formRef}
       onSubmit={(e) => {
         e.preventDefault();
         if (!disabled) run(text, choice);
@@ -92,7 +125,7 @@ export function CommandForm({ onAnalyze, onClear, busy, result, analyzed, highli
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
-          aria-describedby="command-hint command-count"
+          aria-describedby="command-hint"
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
@@ -117,30 +150,49 @@ export function CommandForm({ onAnalyze, onClear, busy, result, analyzed, highli
         >
           Clear
         </button>
-        <span className="shell-pick">
-          <select
-            aria-label="Shell"
-            value={choice}
-            disabled={busy}
-            onChange={(e) => {
-              const next = e.target.value as Choice;
-              setChoice(next);
-              // While editing, the pick applies to the next Analyze, not to the old command.
-              if (showView && result && analyzed !== null) run(analyzed, next);
-            }}
-          >
-            <option value="auto">{autoLabel(result)}</option>
-            {SHELLS.map((s) => (
-              <option key={s} value={s}>
-                {SHELL_LABEL[s]}
-              </option>
-            ))}
-          </select>
-        </span>
-        <span className={tooLong ? 'counter over' : 'counter'} id="command-count">
-          {nf.format(text.length)} / {nf.format(MAX_COMMAND_CHARS)} characters
-        </span>
+        <Select.Root
+          value={choice}
+          disabled={busy}
+          onValueChange={(v) => {
+            const next = v as Choice;
+            setChoice(next);
+            // While editing, the pick applies to the next Analyze, not to the old command.
+            if (showView && result && analyzed !== null) run(analyzed, next);
+          }}
+        >
+          <Select.Trigger className="shell-trigger" aria-label="Shell">
+            <span className="k">Shell</span>
+            <Select.Value>{shownChoice(choice, result)}</Select.Value>
+            <Select.Icon className="chev">
+              <Chevron />
+            </Select.Icon>
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content className="shell-menu" position="popper" side="bottom" align="end" sideOffset={6}>
+              <Select.Viewport>
+                <ShellOption
+                  value="auto"
+                  text="Auto-detect"
+                  hint={
+                    result && result.shell.name !== 'unknown'
+                      ? `Detected ${SHELL_LABEL[result.shell.name]}, ${result.shell.confidence} confidence`
+                      : 'Works out the shell from the command'
+                  }
+                />
+                <Select.Separator className="shell-sep" />
+                {SHELLS.map((sh) => (
+                  <ShellOption key={sh} value={sh} text={SHELL_LABEL[sh]} />
+                ))}
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
       </div>
+      {tooLong && (
+        <p className="too-long" role="alert">
+          Too long: the limit is 5,000 characters.
+        </p>
+      )}
     </form>
   );
 }

@@ -4,6 +4,7 @@ import type { ErrorCode } from '@ca/core/types';
 import { analyze, checkSecret } from '../src/api';
 import { App } from '../src/App';
 import { FIND_XARGS, findXargs, rulesOnlyResult } from './fixtures';
+import { pickShell } from './select';
 
 vi.mock('../src/api', () => ({
   checkSecret: vi.fn(),
@@ -95,7 +96,7 @@ describe('results and the command box', () => {
   it('Retry runs the same command and shell again', async () => {
     vi.mocked(analyze).mockResolvedValue({ ok: true, analysis: rulesOnlyResult() });
     await unlock();
-    fireEvent.change(screen.getByLabelText('Shell'), { target: { value: 'zsh' } });
+    pickShell('zsh');
     analyzeText(FIND_XARGS);
     fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(analyze).toHaveBeenCalledTimes(2));
