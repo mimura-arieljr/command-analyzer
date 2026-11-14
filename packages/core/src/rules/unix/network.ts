@@ -36,7 +36,9 @@ function isUpload(seg: Segment): boolean {
 function downloadRun(seg: Segment, ctx: RuleContext) {
   const inv = invocation(seg);
   if (!inv || !DOWNLOADERS.has(inv.name)) return undefined;
-  const next = pipedInto(seg, ctx);
+  let next = pipedInto(seg, ctx);
+  // A copy saved with tee still runs.
+  while (next && invocation(next)?.name === 'tee') next = pipedInto(next, ctx);
   return runsInput(next) ? next : undefined;
 }
 

@@ -1,4 +1,4 @@
-import { afterPrivilege, commandWord, type Segment, type Word } from '../lex';
+import { afterPrivilege, commandWord, innerCommands, type Segment, type Word } from '../lex';
 import type { Level } from '../types';
 import type { RuleContext } from './types';
 
@@ -49,7 +49,21 @@ export function operands(args: Word[], flagPrefix = '-'): Word[] {
 }
 
 export const isWild = (w: Word) => /[*?]/.test(w.quoted ? '' : w.value);
-export const isVariable = (w: Word) => /\$[{(]?[A-Za-z_]/.test(w.raw) || /%[A-Za-z_]+%/.test(w.raw);
+// cmd and PowerShell expand wildcards inside quotes too.
+export const isWildAnyQuote = (w: Word) => /[*?]/.test(w.value);
+
+// Redirect targets that throw output away instead of writing a file, in any shell.
+const NULL_TARGETS = new Set(['/dev/null', '/dev/stderr', '/dev/stdout', '/dev/tty', 'nul', 'nul:', '$null']);
+export const isNullTarget = (t: string) => NULL_TARGETS.has(t.toLowerCase().replace(/[;,]+$/, ''));
+
+// The commands a segment hands to another program (find -exec, xargs), as invocations.
+export function innerInvocations(seg: Segment): Invocation[] {
+  return innerCommands(seg).flatMap((s) => {
+    const inv = invocation(s);
+    return inv ? [inv] : [];
+  });
+}
+export const isVariable = (w: Word) => /\$[{(]?[A-Za-z_0-9@*]/.test(w.raw) || /%[A-Za-z_]+%/.test(w.raw);
 
 export function snippetOf(ctx: RuleContext, seg: Segment, to: Segment = seg): string {
   return ctx.text.slice(seg.start, to.end);
@@ -58,7 +72,7 @@ export function snippetOf(ctx: RuleContext, seg: Segment, to: Segment = seg): st
 // The segment this one pipes into, if any.
 export function pipedInto(seg: Segment, ctx: RuleContext): Segment | undefined {
   if (seg.joinerAfter !== '|') return undefined;
-  const next = ctx.segments[ctx.index + 1];
+  const next = ctx.segments[ctx.segments.indexOf(seg) + 1];
   return next && next.joinerBefore === '|' && next.nested === seg.nested ? next : undefined;
 }
 

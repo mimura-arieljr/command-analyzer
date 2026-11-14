@@ -1,12 +1,16 @@
 import type { Word } from '../lex';
 import { DELETE_MATCH, ELEVATE_MATCH, hit, HIDDEN_MATCH, NETWORK_MATCH, OVERWRITE_MATCH, RELATIVE_DEPENDS, SYSTEM_MATCH } from './define';
-import { invocation, isWild, operands, snippetOf } from './helpers';
+import { invocation, isNullTarget, isWildAnyQuote, operands, snippetOf } from './helpers';
 import { encodedCommand } from './powershell';
 import type { RuleFn, RuleHit } from './types';
 
 const RECYCLE = 'Files removed this way skip the Recycle Bin and cannot be recovered.';
 
-const switches = (args: Word[]) => args.filter((w) => w.value.startsWith('/')).map((w) => w.value.toLowerCase());
+// Switches, with joined ones (/s/q) split apart.
+const switches = (args: Word[]) =>
+  args.filter((w) => w.value.startsWith('/')).flatMap((w) => w.value.toLowerCase().split(/(?=\/)/));
+// A for-loop variable (%f or %%f), which stands for many files.
+const isLoopVar = (w: Word) => /(^|[^%])%%?~?[a-z]+(?![%\w])/i.test(w.value);
 const hasSwitch = (args: Word[], ...names: string[]) => switches(args).some((s) => names.some((n) => s === n || s.startsWith(n + ':')));
 
 export const cmdDelete: RuleFn = (seg, ctx) => {
@@ -16,7 +20,7 @@ export const cmdDelete: RuleFn = (seg, ctx) => {
   const isRd = inv.name === 'rd' || inv.name === 'rmdir';
   if (!isDel && !isRd) return [];
   const targets = operands(inv.args, '/');
-  const broad = isRd ? hasSwitch(inv.args, '/s') : hasSwitch(inv.args, '/s', '/q', '/f') || targets.some(isWild);
+  const broad = isRd ? hasSwitch(inv.args, '/s') : hasSwitch(inv.args, '/s', '/q', '/f') || targets.some((w) => isWildAnyQuote(w) || isLoopVar(w));
   const what = targets.map((w) => w.raw).join(' ') || 'the named files';
   return [
     hit(
@@ -66,7 +70,7 @@ export const cmdWipe: RuleFn = (seg, ctx) => {
 export const cmdOverwrite: RuleFn = (seg, ctx) => {
   const out: RuleHit[] = [];
   for (const r of seg.redirects) {
-    if (!/^\d*>$/.test(r.op) || r.target === '' || r.target.startsWith('&') || r.target.toLowerCase() === 'nul') continue;
+    if (!/^\d*>$/.test(r.op) || r.target === '' || r.target.startsWith('&') || isNullTarget(r.target)) continue;
     out.push(
       hit(
         {

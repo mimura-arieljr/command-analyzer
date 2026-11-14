@@ -14,6 +14,23 @@ const RULESETS: Record<ShellFamily, RuleFn[]> = {
   cmd: CMD_RULES,
 };
 
+interface FamilyHit {
+  family: ShellFamily;
+  hit: RuleHit;
+}
+
+// In auto mode several families can read the same text (rm is also a PowerShell alias).
+// - For each snippet and area, keep only the family with the highest level (the first on a tie).
+function oneFamilyEach(found: FamilyHit[]): RuleHit[] {
+  const best = new Map<string, FamilyHit>();
+  for (const f of found) {
+    const key = `${f.hit.area}\u0000${f.hit.snippet}`;
+    const seen = best.get(key);
+    if (!seen || rank(f.hit.level) > rank(seen.hit.level)) best.set(key, f);
+  }
+  return found.filter((f) => best.get(`${f.hit.area}\u0000${f.hit.snippet}`)?.family === f.family).map((f) => f.hit);
+}
+
 // Same id and snippet means the same finding; keep the higher level.
 function dedupe(hits: RuleHit[]): RuleHit[] {
   const byKey = new Map<string, RuleHit>();
@@ -32,14 +49,16 @@ function dedupe(hits: RuleHit[]): RuleHit[] {
 // - Each segment is checked with the rules of its own family (cmd can contain PowerShell).
 export function runRules(text: string, shell?: Shell): RuleHit[] {
   const families = shell ? [familyOf(shell)] : FAMILIES;
-  const all: RuleHit[] = [];
+  const all: FamilyHit[] = [];
   for (const family of families) {
     const segments = lex(text, family);
     segments.forEach((seg, index) => {
-      for (const rule of RULESETS[seg.family]) all.push(...rule(seg, { text, segments, index }));
+      for (const rule of RULESETS[seg.family]) {
+        for (const hit of rule(seg, { text, segments, index })) all.push({ family: seg.family, hit });
+      }
     });
   }
-  return dedupe(all);
+  return dedupe(oneFamilyEach(all));
 }
 
 // Highest level first, then the first found.

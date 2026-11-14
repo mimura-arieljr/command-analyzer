@@ -5,6 +5,7 @@ import type { RuleFn } from '../types';
 import { runsInput } from './network';
 
 const PRIVILEGE = new Set(['sudo', 'su', 'doas', 'pkexec']);
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
 
 export const elevate: RuleFn = (seg, ctx) => {
   const cw = commandWord(seg);
@@ -44,7 +45,8 @@ export const evalText: RuleFn = (seg, ctx) => {
       ),
     ];
   }
-  if ((inv.name === 'source' || inv.name === '.') && inv.args.some((w) => w.raw.startsWith('<('))) {
+  const reader = inv.name === 'source' || inv.name === '.' || SHELLS.has(inv.name);
+  if (reader && inv.args.some((w) => w.raw.startsWith('<('))) {
     const remote = inv.args.some((w) => /^<\(\s*(curl|wget)\b/.test(w.raw));
     return [
       hit(
@@ -87,14 +89,31 @@ export const decodeRun: RuleFn = (seg, ctx) => {
   ];
 };
 
-const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
-
 export const shellSubstitutionRun: RuleFn = (seg, ctx) => {
   const inv = invocation(seg);
   if (!inv || !SHELLS.has(inv.name)) return [];
   const k = inv.args.findIndex((w) => !w.quoted && /^-[a-z]*c[a-z]*$/i.test(w.value));
   const script = k >= 0 ? inv.args[k + 1] : undefined;
-  if (!script || !(script.raw.includes('$(') || script.raw.includes('`'))) return [];
+  if (!script) return [];
+  const substitutes = script.raw.includes('$(') || script.raw.includes('`');
+  if (!substitutes && /^["']?\$[{]?[A-Za-z_0-9@*]+[}]?["']?$/.test(script.raw)) {
+    return [
+      hit(
+        {
+          id: 'eval-text',
+          area: 'hidden_behaviour',
+          level: 'medium',
+          certainty: 'certain',
+          reason: `Runs the text in ${script.value} as a shell script. What actually runs depends on what that variable holds.`,
+          depends_on: 'The value of the variable when the command runs.',
+          how_to_verify: `Run echo "${script.value}" first to see the script it would run.`,
+          matchesModel: HIDDEN_MATCH,
+        },
+        snippetOf(ctx, seg),
+      ),
+    ];
+  }
+  if (!substitutes) return [];
   return [
     hit(
       {

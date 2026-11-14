@@ -34,6 +34,10 @@ interface Region {
   start: number;
   end: number;
   family: ShellFamily;
+  // Unescaped command text to lex instead of the input, for escaped quotes inside nested commands.
+  // - Segments found in it report `anchor` (a span of the input) as their start and end, so snippets stay exact.
+  text?: string;
+  anchor?: { start: number; end: number };
 }
 
 const MAX_DEPTH = 8;
@@ -46,11 +50,16 @@ export function lex(text: string, family: ShellFamily): Segment[] {
 
 function lexRegion(text: string, region: Region, nested: boolean, out: Segment[], depth: number): void {
   if (depth > MAX_DEPTH) return;
-  const scanner = new Scanner(text, region, nested);
+  const src = region.text ?? text;
+  const scanner = new Scanner(src, region, nested);
   const segs = scanner.run();
-  out.push(...segs);
-  const inner = [...scanner.nestedRegions, ...segs.flatMap(invocationRegions)];
-  for (const r of inner) lexRegion(text, r, true, out, depth + 1);
+  const anchor = region.anchor;
+  out.push(...(anchor ? segs.map((s) => ({ ...s, start: anchor.start, end: anchor.end })) : segs));
+  const inner = [...scanner.nestedRegions, ...segs.flatMap((s) => invocationRegions(s, src))];
+  for (const r of inner) {
+    const carried = !anchor || r.text ? r : { ...r, text: src, anchor };
+    lexRegion(text, carried, true, out, depth + 1);
+  }
 }
 
 const isSpace = (c: string) => c === ' ' || c === '\t' || c === '\r';
@@ -590,15 +599,58 @@ class Scanner {
 
 // ---- command words ----
 
-const UNIX_PREFIXES = new Set(['env', 'nohup', 'time', 'command', 'exec', 'nice', 'stdbuf', 'builtin']);
+// Wrappers that run the command after them, with the flags that take a value.
+const UNIX_PREFIXES: Record<string, string[]> = {
+  env: ['-u', '-C', '-S'],
+  nohup: [],
+  time: ['-f', '-o'],
+  command: [],
+  exec: ['-a'],
+  nice: ['-n'],
+  stdbuf: ['-i', '-o', '-e'],
+  builtin: [],
+  timeout: ['-s', '-k', '--signal', '--kill-after'],
+  watch: ['-n', '-d', '--interval'],
+  ionice: ['-c', '-n', '-p'],
+  caffeinate: ['-t', '-w'],
+};
+// Wrappers with a positional argument before the command (timeout DURATION cmd).
+const UNIX_PREFIX_POSITIONALS: Record<string, number> = { timeout: 1 };
 const UNIX_KEYWORDS = new Set(['then', 'do', 'else', 'elif', 'if', 'while', 'until', '!', '{', '}']);
+const CMD_COMPARE = new Set(['equ', 'neq', 'lss', 'leq', 'gtr', 'geq', '==']);
 
 export interface CommandWord {
   name: string;
   index: number;
 }
 
-// The real command of a segment, skipping assignments and wrapper prefixes.
+// Index after a cmd `if` condition (`if [/i] [not] exist X`, `errorlevel N`, `defined X`, `a==b`, `a EQU b`).
+function skipCmdIf(ws: Word[], k: number): number {
+  k++;
+  if (ws[k]?.value.toLowerCase() === '/i') k++;
+  if (ws[k]?.value.toLowerCase() === 'not') k++;
+  const v = ws[k]?.value.toLowerCase() ?? '';
+  if (v === 'exist' || v === 'errorlevel' || v === 'defined' || v === 'cmdextversion') return k + 2;
+  if (/^[^=]+==[^=]+$/.test(ws[k]?.value ?? '')) return k + 1;
+  if (CMD_COMPARE.has(ws[k + 1]?.value.toLowerCase() ?? '')) return k + 3;
+  return k + 1;
+}
+
+// Index after a unix wrapper at `k` and its flags.
+function skipUnixPrefix(ws: Word[], k: number): number {
+  const name = ws[k].value;
+  const valued = UNIX_PREFIXES[name];
+  k++;
+  while (k < ws.length && ws[k].value.startsWith('-') && ws[k].value !== '-') {
+    const flag = ws[k].value;
+    k++;
+    if (flag === '--') break;
+    if (valued.includes(flag)) k++;
+  }
+  return k + (UNIX_PREFIX_POSITIONALS[name] ?? 0);
+}
+
+// The real command of a segment, skipping assignments, keywords and wrapper prefixes.
 export function commandWord(seg: Segment, family: ShellFamily = seg.family): CommandWord | null {
   const ws = seg.words;
   let k = 0;
@@ -613,19 +665,25 @@ export function commandWord(seg: Segment, family: ShellFamily = seg.family): Com
         k++;
         continue;
       }
-      if (UNIX_PREFIXES.has(v)) {
-        k++;
-        while (k < ws.length && ws[k].value.startsWith('-')) {
-          const flag = ws[k].value;
-          k++;
-          if ((v === 'nice' && flag === '-n') || (v === 'env' && (flag === '-u' || flag === '-C'))) k++;
-        }
+      if (Object.hasOwn(UNIX_PREFIXES, v)) {
+        k = skipUnixPrefix(ws, k);
         continue;
       }
     }
     if (family === 'powershell' && (v === '&' || v === '.')) {
       k++;
       continue;
+    }
+    if (family === 'cmd') {
+      const low = v.toLowerCase().replace(/^@/, '');
+      if (low === 'if') {
+        k = skipCmdIf(ws, k);
+        continue;
+      }
+      if (low === 'do' || low === 'else') {
+        k++;
+        continue;
+      }
     }
     break;
   }
@@ -655,20 +713,64 @@ export function afterPrivilege(seg: Segment): Segment {
 
 // ---- command text passed to another shell ----
 
-function wordRegion(w: Word, family: ShellFamily): Region {
+// The command text inside a word: inside its quotes when fully quoted.
+// - When escapes make the text differ from the word's value, lex the value instead (anchored to the word).
+function wordRegion(w: Word, family: ShellFamily, src: string): Region {
   const q = w.raw[0];
   const fully = (q === '"' || q === "'") && w.raw.length >= 2 && w.raw.endsWith(q);
-  return fully ? { start: w.start + 1, end: w.end - 1, family } : { start: w.start, end: w.end, family };
+  const r = fully ? { start: w.start + 1, end: w.end - 1, family } : { start: w.start, end: w.end, family };
+  if (src.slice(r.start, r.end) === w.value) return r;
+  return { start: 0, end: w.value.length, family, text: w.value, anchor: { start: w.start, end: w.end } };
 }
 
-function wordsRegion(ws: Word[], family: ShellFamily): Region {
-  if (ws.length === 1) return wordRegion(ws[0], family);
+function wordsRegion(ws: Word[], family: ShellFamily, src: string): Region {
+  if (ws.length === 1) return wordRegion(ws[0], family, src);
   return { start: ws[0].start, end: ws[ws.length - 1].end, family };
 }
 
 const UNIX_SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
+const FIND_EXEC = new Set(['-exec', '-execdir', '-ok', '-okdir']);
+const XARGS_VALUE_FLAGS = new Set(['-I', '-n', '-P', '-d', '-L', '-s', '-E', '-a']);
 
-function invocationRegions(seg: Segment): Region[] {
+// The commands find runs with -exec (each one up to its ; or +).
+export function findExecs(args: Word[]): Word[][] {
+  const out: Word[][] = [];
+  for (let k = 0; k < args.length; k++) {
+    if (!FIND_EXEC.has(args[k].value)) continue;
+    const start = k + 1;
+    while (k + 1 < args.length && args[k + 1].value !== ';' && args[k + 1].value !== '+') k++;
+    out.push(args.slice(start, k + 1));
+    k++;
+  }
+  return out.filter((ws) => ws.length > 0);
+}
+
+// The command xargs runs, as words.
+export function xargsCommandWords(args: Word[]): Word[] {
+  for (let k = 0; k < args.length; k++) {
+    const v = args[k].value;
+    if (XARGS_VALUE_FLAGS.has(v)) {
+      k++;
+      continue;
+    }
+    if (v.startsWith('-')) continue;
+    return args.slice(k);
+  }
+  return [];
+}
+
+// The commands a unix segment hands to another program to run (find -exec, xargs), as segments.
+export function innerCommands(seg: Segment): Segment[] {
+  if (seg.family !== 'unix') return [];
+  const s = afterPrivilege(seg);
+  const cw = commandWord(s);
+  if (!cw) return [];
+  const rest = s.words.slice(cw.index + 1);
+  const groups = cw.name === 'find' ? findExecs(rest) : cw.name === 'xargs' ? [xargsCommandWords(rest)] : [];
+  return groups.filter((ws) => ws.length > 0).map((ws) => ({ ...seg, words: ws }));
+}
+
+function invocationRegions(seg: Segment, src: string): Region[] {
   const s = afterPrivilege(seg);
   const cw = commandWord(s);
   if (!cw) return [];
@@ -676,19 +778,25 @@ function invocationRegions(seg: Segment): Region[] {
   const rest = s.words.slice(cw.index + 1);
   if (UNIX_SHELLS.has(name)) {
     const k = rest.findIndex((w) => !w.quoted && /^-[a-z]*c[a-z]*$/i.test(w.value));
-    if (k >= 0 && rest[k + 1]) return [wordRegion(rest[k + 1], 'unix')];
+    if (k >= 0 && rest[k + 1]) return [wordRegion(rest[k + 1], 'unix', src)];
+  }
+  if (name === 'su') {
+    const k = rest.findIndex((w) => w.value === '-c' || w.value === '--command');
+    if (k >= 0 && rest[k + 1]) return [wordRegion(rest[k + 1], 'unix', src)];
+    const eq = rest.find((w) => w.value.startsWith('--command='));
+    if (eq) return [{ start: 0, end: eq.value.length - 10, family: 'unix', text: eq.value.slice(10), anchor: { start: eq.start, end: eq.end } }];
   }
   if (name === 'powershell' || name === 'pwsh') {
     const k = rest.findIndex((w) => /^-(c|co|com|comm|comma|comman|command)$/i.test(w.value));
-    if (k >= 0 && rest[k + 1]) return [wordsRegion(rest.slice(k + 1), 'powershell')];
+    if (k >= 0 && rest[k + 1]) return [wordsRegion(rest.slice(k + 1), 'powershell', src)];
   }
   if (name === 'cmd') {
     const k = rest.findIndex((w) => /^\/[ck]$/i.test(w.value));
-    if (k >= 0 && rest[k + 1]) return [wordsRegion(rest.slice(k + 1), 'cmd')];
+    if (k >= 0 && rest[k + 1]) return [wordsRegion(rest.slice(k + 1), 'cmd', src)];
   }
   if (name === 'ssh') {
     const last = rest[rest.length - 1];
-    if (last?.quoted && rest.length >= 2) return [wordRegion(last, 'unix')];
+    if (last?.quoted && rest.length >= 2) return [wordRegion(last, 'unix', src)];
   }
-  return [];
+  return innerCommands(seg).flatMap((inner) => invocationRegions(inner, src));
 }

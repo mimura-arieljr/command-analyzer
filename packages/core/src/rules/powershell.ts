@@ -1,6 +1,6 @@
 import type { Segment, Word } from '../lex';
 import { DELETE_MATCH, ELEVATE_MATCH, hit, HIDDEN_MATCH, NETWORK_MATCH, OVERWRITE_MATCH, RELATIVE_DEPENDS, SYSTEM_MATCH } from './define';
-import { invocation, isWild, operands, pipedInto, snippetOf } from './helpers';
+import { invocation, isNullTarget, isWildAnyQuote, operands, pipedInto, snippetOf } from './helpers';
 import type { RuleContext, RuleFn, RuleHit } from './types';
 
 const RECYCLE = 'Items removed this way skip the Recycle Bin and cannot be recovered.';
@@ -33,10 +33,16 @@ export const psDelete: RuleFn = (seg, ctx) => {
   const targets = operands(inv.args).map((w) => w.raw);
   const recursive = !!psParam(inv.args, 'recurse', ['r']);
   const force = !!psParam(inv.args, 'force');
-  const wild = operands(inv.args).some(isWild);
-  const what = targets.join(' ') || 'the named items';
-  const check = targets.length ? `Run "Get-ChildItem ${targets.join(', ')}" first to see what it would delete.` : '';
-  const broad = recursive || force || wild;
+  const wild = operands(inv.args).some(isWildAnyQuote);
+  // Fed by a pipeline, it deletes whatever the previous command lists (like xargs rm).
+  const piped = seg.joinerBefore === '|' && targets.length === 0;
+  const what = targets.join(' ') || (piped ? 'every item the previous command lists' : 'the named items');
+  const check = targets.length
+    ? `Run "Get-ChildItem ${targets.join(', ')}" first to see what it would delete.`
+    : piped
+      ? 'Run the part before the pipe on its own first and read the list.'
+      : '';
+  const broad = recursive || force || wild || piped;
   return [
     hit(
       {
@@ -96,7 +102,7 @@ function overwriteHit(ctx: RuleContext, seg: Segment, target: string): RuleHit {
 export const psOverwrite: RuleFn = (seg, ctx) => {
   const out: RuleHit[] = [];
   for (const r of seg.redirects) {
-    if (!/^(\d*|\*)>$/.test(r.op) || r.target === '' || r.target.startsWith('&') || r.target.toLowerCase() === '$null') continue;
+    if (!/^(\d*|\*)>$/.test(r.op) || r.target === '' || r.target.startsWith('&') || isNullTarget(r.target)) continue;
     out.push(overwriteHit(ctx, seg, r.target));
   }
   const inv = invocation(seg);

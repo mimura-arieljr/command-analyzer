@@ -1,6 +1,6 @@
 import type { Segment } from '../../lex';
 import { DELETE_MATCH, hit, OVERWRITE_MATCH, RELATIVE_DEPENDS } from '../define';
-import { DOTFILE_PATH, hasLong, hasShort, invocation, isVariable, isWild, operands, snippetOf, SYSTEM_PATH } from '../helpers';
+import { DOTFILE_PATH, hasLong, hasShort, innerInvocations, invocation, isNullTarget, isVariable, isWild, operands, snippetOf, SYSTEM_PATH } from '../helpers';
 import type { RuleFn, RuleHit } from '../types';
 
 const TRASH = 'Files removed this way skip the Trash and cannot be recovered.';
@@ -100,10 +100,8 @@ const DELETERS = new Set(['rm', 'unlink', 'shred']);
 export const findDelete: RuleFn = (seg, ctx) => {
   const inv = invocation(seg);
   if (!inv || inv.name !== 'find') return [];
-  const vals = inv.args.map((w) => w.value);
-  const execAt = vals.findIndex((v) => v === '-exec' || v === '-execdir' || v === '-ok' || v === '-okdir');
-  const execDeletes = execAt >= 0 && DELETERS.has((vals[execAt + 1] ?? '').split('/').pop() ?? '');
-  if (!vals.includes('-delete') && !execDeletes) return [];
+  const execDeletes = innerInvocations(seg).some((x) => DELETERS.has(x.name));
+  if (!inv.args.some((w) => w.value === '-delete') && !execDeletes) return [];
   return [
     hit(
       {
@@ -121,26 +119,8 @@ export const findDelete: RuleFn = (seg, ctx) => {
   ];
 };
 
-const XARGS_VALUE_FLAGS = new Set(['-I', '-n', '-P', '-d', '-L', '-s', '-E', '-a']);
-
-function xargsCommand(seg: Segment): string | undefined {
-  const inv = invocation(seg);
-  if (!inv || inv.name !== 'xargs') return undefined;
-  for (let k = 0; k < inv.args.length; k++) {
-    const v = inv.args[k].value;
-    if (XARGS_VALUE_FLAGS.has(v)) {
-      k++;
-      continue;
-    }
-    if (v.startsWith('-')) continue;
-    return v.split('/').pop();
-  }
-  return undefined;
-}
-
 export const xargsDelete: RuleFn = (seg, ctx) => {
-  const cmd = xargsCommand(seg);
-  if (!cmd || !DELETERS.has(cmd)) return [];
+  if (invocation(seg)?.name !== 'xargs' || !innerInvocations(seg).some((x) => DELETERS.has(x.name))) return [];
   return [
     hit(
       {
@@ -183,12 +163,10 @@ export const wipe: RuleFn = (seg, ctx) => {
   ];
 };
 
-const NULL_TARGETS = new Set(['/dev/null', '/dev/stderr', '/dev/stdout', '/dev/tty']);
-
 export const overwriteRedirect: RuleFn = (seg, ctx) => {
   const out: RuleHit[] = [];
   for (const r of seg.redirects) {
-    if (!/^(\d*|&)>\|?$/.test(r.op) || r.target === '' || r.target.startsWith('&') || NULL_TARGETS.has(r.target)) continue;
+    if (!/^(\d*|&)>\|?$/.test(r.op) || r.target === '' || r.target.startsWith('&') || isNullTarget(r.target)) continue;
     const important = SYSTEM_PATH.test(r.target) || DOTFILE_PATH.test(r.target);
     out.push(
       hit(
@@ -226,19 +204,31 @@ export const gitRules: RuleFn = (seg, ctx) => {
   const vals = g.args.map((w) => w.value);
   const snip = snippetOf(ctx, seg);
   let reason = '';
+  let level: 'medium' | 'high' = 'high';
+  const forced = hasShort(g.args, 'f') || hasLong(g.args, ['--force']);
   if (g.sub === 'reset' && vals.includes('--hard')) reason = 'Throws away every uncommitted change in tracked files.';
   else if (g.sub === 'clean' && (hasShort(g.args, 'f') || hasLong(g.args, ['--force']))) reason = 'Deletes untracked files (and folders with -d, ignored files with -x). They are not in git, so they cannot be restored from it.';
   else if (g.sub === 'checkout' && vals.includes('--') && vals.some((v, i) => i > vals.indexOf('--'))) reason = 'Overwrites uncommitted changes in the named files with the committed version.';
-  else if (g.sub === 'restore' && !vals.includes('--staged') && vals.some((v) => v === '.' || v === ':/')) reason = 'Overwrites uncommitted changes with the committed version.';
+  else if (g.sub === 'checkout' && vals.some((v) => v === '.' || v === ':/')) reason = 'Overwrites every uncommitted change in this folder with the committed version.';
+  else if (g.sub === 'checkout' && forced) reason = 'Switches branch and throws away uncommitted changes that are in the way.';
+  else if (g.sub === 'restore' && (!vals.includes('--staged') || vals.includes('--worktree') || vals.includes('-W')) && operands(g.args).length > 0) reason = 'Overwrites uncommitted changes in the named files with the committed version.';
+  else if (g.sub === 'stash' && vals[0] === 'clear') reason = 'Deletes every saved stash.';
+  else if (g.sub === 'stash' && vals[0] === 'drop') {
+    reason = 'Deletes a saved stash.';
+    level = 'medium';
+  } else if (g.sub === 'branch' && (vals.includes('-D') || (hasLong(g.args, ['--delete']) && forced))) {
+    reason = 'Deletes the branch even if its commits are not merged anywhere.';
+    level = 'medium';
+  }
   if (reason) {
     return [
       hit(
         {
           id: 'git-destructive',
           area: 'data_loss',
-          level: 'high',
+          level,
           certainty: 'certain',
-          reason: `${reason} Lost changes cannot be recovered.`,
+          reason: level === 'high' ? `${reason} Lost changes cannot be recovered.` : `${reason} It can only be recovered with git reflog or fsck.`,
           depends_on: 'Which repository you are in and what is uncommitted.',
           how_to_verify: 'Run "git status" first to see what would be lost.',
           matchesModel: /discard|throw|lose|lost|delet|overwrit/i,
