@@ -57,6 +57,8 @@ export const systemPathWrite: RuleFn = (seg, ctx) => {
 
 const SYSTEMCTL = new Set(['stop', 'disable', 'mask', 'kill', 'reboot', 'poweroff', 'halt']);
 const LAUNCHCTL = new Set(['unload', 'bootout', 'remove', 'disable']);
+// launchctl verbs that add a background job, which can start again at every login.
+const LAUNCHCTL_START = new Set(['load', 'bootstrap', 'enable', 'submit']);
 
 export const serviceChange: RuleFn = (seg, ctx) => {
   const inv = invocation(seg);
@@ -66,6 +68,24 @@ export const serviceChange: RuleFn = (seg, ctx) => {
     (inv.name === 'systemctl' && vals.some((v) => SYSTEMCTL.has(v))) ||
     (inv.name === 'launchctl' && vals.some((v) => LAUNCHCTL.has(v))) ||
     (inv.name === 'service' && vals.includes('stop'));
+  const starts = inv.name === 'launchctl' && vals.some((v) => LAUNCHCTL_START.has(v));
+  if (starts) {
+    return [
+      hit(
+        {
+          id: 'service-change',
+          area: 'system_changes',
+          level: 'medium',
+          certainty: 'certain',
+          reason: 'Loads a background job (a launch agent or daemon) that can start again every time you log in or the Mac starts.',
+          depends_on: 'What the .plist file runs.',
+          how_to_verify: 'Read the .plist first, especially ProgramArguments and RunAtLoad.',
+          matchesModel: /service|daemon|agent|background|launch/i,
+        },
+        snippetOf(ctx, seg),
+      ),
+    ];
+  }
   if (!yes) return [];
   return [
     hit(

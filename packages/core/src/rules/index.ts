@@ -4,14 +4,15 @@ import { rank } from './helpers';
 import type { RuleFn, RuleHit } from './types';
 import { CMD_RULES } from './cmd';
 import { encodedCommand, POWERSHELL_RULES } from './powershell';
+import { SHARED_RULES } from './shared';
 import { UNIX_RULES } from './unix';
 
 export type { RuleHit } from './types';
 
 const RULESETS: Record<ShellFamily, RuleFn[]> = {
-  unix: [...UNIX_RULES, encodedCommand],
-  powershell: POWERSHELL_RULES,
-  cmd: CMD_RULES,
+  unix: [...UNIX_RULES, encodedCommand, ...SHARED_RULES],
+  powershell: [...POWERSHELL_RULES, ...SHARED_RULES],
+  cmd: [...CMD_RULES, ...SHARED_RULES],
 };
 
 interface FamilyHit {

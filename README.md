@@ -50,7 +50,7 @@ command ──► Bedrock model ──► model reply ──┐
   └─────► rules (per shell) ──► hits ───────┘
 ```
 
-The rules read the command with a light, quote-aware lexer (`packages/core/src/lex.ts`), so `echo "rm -rf /"` is not a deletion but `bash -c "rm -rf /"` is. Command text inside `$(...)`, backticks, `bash -c`, `ssh host '...'`, `cmd /c`, `powershell -Command` and PowerShell script blocks is checked too.
+The rules read the command with a light, quote-aware lexer (`packages/core/src/lex.ts`), so `echo "rm -rf /"` is not a deletion but `bash -c "rm -rf /"` is. Command text inside `$(...)`, backticks, `bash -c`, `su -c`, `ssh host ...`, `docker exec`, `kubectl exec -- ...`, `find -exec`, `xargs`, `forfiles /c`, `cmd /c`, `powershell -Command` and PowerShell script blocks is checked too. Deletes inside inline scripts (`python -c`, `perl -e`, `node -e` and so on) are flagged as possible, because the rules can only spot the delete call, not which paths it gets.
 
 There is one rule set per shell family: Unix (bash, zsh, sh), PowerShell and cmd. With auto-detect, every family's rules run, so the warnings do not depend on the model's guess of the shell. When you pick a shell, only that family's rules run.
 
@@ -66,8 +66,8 @@ The merge lives in `packages/core/src/finalize.ts`.
 
 ### Adding a rule
 
-1. Add the rule function to the right file: `packages/core/src/rules/unix/*.ts`, `rules/powershell.ts` or `rules/cmd.ts`. Use `hit()` from `rules/define.ts` and the helpers in `rules/helpers.ts`.
-2. Add it to that family's list (`UNIX_*`, `POWERSHELL_RULES` or `CMD_RULES`).
+1. Add the rule function to the right file: `packages/core/src/rules/unix/*.ts`, `rules/powershell.ts` or `rules/cmd.ts`, or `rules/shared.ts` for programs that work the same from every shell (`rimraf`, `robocopy`, inline scripts). Use `hit()` from `rules/define.ts` and the helpers in `rules/helpers.ts`.
+2. Add it to that family's list (`UNIX_*`, `POWERSHELL_RULES`, `CMD_RULES` or `SHARED_RULES`).
 3. Use a shared id (`delete-recursive`, `download`, `elevate` and so on) when the same risk exists in another shell, so findings de-duplicate.
 4. Add positive and negative tests in `packages/core/test/rules-*.test.ts`.
 

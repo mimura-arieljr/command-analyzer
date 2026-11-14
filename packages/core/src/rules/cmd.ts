@@ -9,8 +9,8 @@ const RECYCLE = 'Files removed this way skip the Recycle Bin and cannot be recov
 // Switches, with joined ones (/s/q) split apart.
 const switches = (args: Word[]) =>
   args.filter((w) => w.value.startsWith('/')).flatMap((w) => w.value.toLowerCase().split(/(?=\/)/));
-// A for-loop variable (%f or %%f), which stands for many files.
-const isLoopVar = (w: Word) => /(^|[^%])%%?~?[a-z]+(?![%\w])/i.test(w.value);
+// A for-loop variable (%f or %%f) or forfiles variable (@path), which stands for many files.
+const isLoopVar = (w: Word) => /(^|[^%])%%?~?[a-z]+(?![%\w])/i.test(w.value) || /@(path|file|fname|relpath)\b/i.test(w.value);
 const hasSwitch = (args: Word[], ...names: string[]) => switches(args).some((s) => names.some((n) => s === n || s.startsWith(n + ':')));
 
 export const cmdDelete: RuleFn = (seg, ctx) => {
@@ -167,4 +167,26 @@ export const caretObfuscation: RuleFn = (seg, ctx) => {
   ];
 };
 
-export const CMD_RULES: RuleFn[] = [cmdDelete, cmdWipe, cmdOverwrite, cmdSystem, cmdDownload, cmdElevate, caretObfuscation, encodedCommand];
+export const cmdCopyOverwrite: RuleFn = (seg, ctx) => {
+  const inv = invocation(seg);
+  if (!inv || !['copy', 'move', 'xcopy'].includes(inv.name) || !hasSwitch(inv.args, '/y')) return [];
+  const ops = operands(inv.args, '/');
+  const dest = ops[ops.length - 1]?.raw ?? 'the destination';
+  return [
+    hit(
+      {
+        id: 'copy-overwrite',
+        area: 'data_loss',
+        level: 'low',
+        certainty: 'possible',
+        reason: `Replaces ${dest} (or files inside it) if it already exists, without asking (/Y). The old contents are lost.`,
+        depends_on: `Whether ${dest} already exists and holds anything you need.`,
+        how_to_verify: `Run "dir ${dest}" first. Without /Y it asks before overwriting.`,
+        matchesModel: OVERWRITE_MATCH,
+      },
+      snippetOf(ctx, seg),
+    ),
+  ];
+};
+
+export const CMD_RULES: RuleFn[] = [cmdCopyOverwrite, cmdDelete, cmdWipe, cmdOverwrite, cmdSystem, cmdDownload, cmdElevate, caretObfuscation, encodedCommand];

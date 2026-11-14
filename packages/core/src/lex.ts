@@ -728,6 +728,36 @@ function wordsRegion(ws: Word[], family: ShellFamily, src: string): Region {
   return { start: ws[0].start, end: ws[ws.length - 1].end, family };
 }
 
+// Index of the first word that is not a flag, skipping the values of `valued` flags.
+function firstOperand(ws: Word[], valued: Set<string>): number {
+  for (let k = 0; k < ws.length; k++) {
+    const v = ws[k].value;
+    if (!v.startsWith('-') || v === '-') return k;
+    if (valued.has(v)) k++;
+  }
+  return ws.length;
+}
+
+const SSH_VALUE_FLAGS = new Set(['-b', '-B', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-l', '-m', '-O', '-o', '-p', '-Q', '-R', '-S', '-W', '-w']);
+const EXEC_VALUE_FLAGS = new Set(['-e', '--env', '-u', '--user', '-w', '--workdir', '--env-file', '--detach-keys']);
+
+// The command text another program runs on a remote host or in a container (ssh, docker exec, kubectl exec).
+function remoteCommand(name: string, rest: Word[]): Word[] {
+  if (name === 'ssh') {
+    const host = firstOperand(rest, SSH_VALUE_FLAGS);
+    return rest.slice(host + 1);
+  }
+  if ((name === 'docker' || name === 'podman') && rest[0]?.value === 'exec') {
+    const container = 1 + firstOperand(rest.slice(1), EXEC_VALUE_FLAGS);
+    return rest.slice(container + 1);
+  }
+  if (name === 'kubectl' && rest[0]?.value === 'exec') {
+    const dashes = rest.findIndex((w) => w.value === '--');
+    return dashes >= 0 ? rest.slice(dashes + 1) : [];
+  }
+  return [];
+}
+
 const UNIX_SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
 const FIND_EXEC = new Set(['-exec', '-execdir', '-ok', '-okdir']);
 const XARGS_VALUE_FLAGS = new Set(['-I', '-n', '-P', '-d', '-L', '-s', '-E', '-a']);
@@ -794,9 +824,11 @@ function invocationRegions(seg: Segment, src: string): Region[] {
     const k = rest.findIndex((w) => /^\/[ck]$/i.test(w.value));
     if (k >= 0 && rest[k + 1]) return [wordsRegion(rest.slice(k + 1), 'cmd', src)];
   }
-  if (name === 'ssh') {
-    const last = rest[rest.length - 1];
-    if (last?.quoted && rest.length >= 2) return [wordRegion(last, 'unix', src)];
+  const remote = remoteCommand(name, rest);
+  if (remote.length) return [wordsRegion(remote, 'unix', src)];
+  if (name === 'forfiles') {
+    const k = rest.findIndex((w) => /^\/c$/i.test(w.value));
+    if (k >= 0 && rest[k + 1]) return [wordRegion(rest[k + 1], 'cmd', src)];
   }
   return innerCommands(seg).flatMap((inner) => invocationRegions(inner, src));
 }

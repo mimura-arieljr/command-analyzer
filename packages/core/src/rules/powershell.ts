@@ -332,7 +332,36 @@ export const psBase64: RuleFn = (seg, ctx) => {
   ];
 };
 
+const PS_COPY = new Set(['copy-item', 'copy', 'cp', 'cpi']);
+const PS_MOVE = new Set(['move-item', 'move', 'mv', 'mi']);
+
+// Copy-Item replaces existing files by default; Move-Item only with -Force.
+export const psCopyOverwrite: RuleFn = (seg, ctx) => {
+  const inv = invocation(seg);
+  if (!inv || isRegistry(inv.args)) return [];
+  const copies = PS_COPY.has(inv.name);
+  if (!copies && !(PS_MOVE.has(inv.name) && psParam(inv.args, 'force'))) return [];
+  const ops = operands(inv.args);
+  const dest = psValue(inv.args, 'destination') ?? (ops.length >= 2 ? ops[ops.length - 1].raw : undefined);
+  if (!dest) return [];
+  return [
+    hit(
+      {
+        id: 'copy-overwrite',
+        area: 'data_loss',
+        level: 'low',
+        certainty: 'possible',
+        reason: `Replaces ${dest} (or files inside it) if it already exists. The old contents are lost.`,
+        depends_on: `Whether ${dest} already exists and holds anything you need.`,
+        how_to_verify: `Run "Test-Path ${dest}" first. Adding -WhatIf shows what it would do.`,
+        matchesModel: OVERWRITE_MATCH,
+      },
+      snippetOf(ctx, seg),
+    ),
+  ];
+};
+
 export const POWERSHELL_RULES: RuleFn[] = [
-  psDelete, psWipe, psOverwrite, psRegistry, psExecutionPolicy, psService,
+  psCopyOverwrite, psDelete, psWipe, psOverwrite, psRegistry, psExecutionPolicy, psService,
   psDownloadRun, psDownload, psUpload, psElevate, psEval, encodedCommand, psBase64,
 ];

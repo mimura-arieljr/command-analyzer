@@ -138,6 +138,18 @@ export const xargsDelete: RuleFn = (seg, ctx) => {
   ];
 };
 
+const DISKUTIL_ERASE = new Set([
+  'erasedisk', 'erasevolume', 'reformat', 'partitiondisk', 'zerodisk', 'randomdisk', 'secureerase',
+  'deletecontainer', 'deletevolume', 'erasecontainer',
+]);
+
+// diskutil verbs that erase data (the apfs and cs groups put a group word first).
+function diskutilErases(args: Segment['words']): boolean {
+  const first = args[0]?.value.toLowerCase() ?? '';
+  const verb = first === 'apfs' || first === 'cs' || first === 'corestorage' ? (args[1]?.value.toLowerCase() ?? '') : first;
+  return DISKUTIL_ERASE.has(verb);
+}
+
 export const wipe: RuleFn = (seg, ctx) => {
   const inv = invocation(seg);
   if (!inv) return [];
@@ -147,6 +159,7 @@ export const wipe: RuleFn = (seg, ctx) => {
   else if (name === 'truncate') reason = 'Cuts the file to a new size, throwing away its contents.';
   else if (name === 'dd' && args.some((w) => w.value.startsWith('of='))) reason = 'Writes raw data over the output file or disk given in of=.';
   else if (name.startsWith('mkfs') || name === 'wipefs') reason = 'Formats or wipes a disk or partition, erasing everything on it.';
+  else if (name === 'diskutil' && diskutilErases(args)) reason = 'Erases, repartitions or deletes a disk or volume, and everything on it.';
   if (!reason) return [];
   return [
     hit(
@@ -295,5 +308,29 @@ export const crontabRemove: RuleFn = (seg, ctx) => {
   ];
 };
 
-export const UNIX_DATA_LOSS: RuleFn[] = [rmRules, findDelete, xargsDelete, wipe, overwriteRedirect, gitRules, rsyncDelete, crontabRemove];
+export const copyOverwrite: RuleFn = (seg, ctx) => {
+  const inv = invocation(seg);
+  if (!inv || (inv.name !== 'mv' && inv.name !== 'cp')) return [];
+  const safe = hasShort(inv.args, 'nib') || hasLong(inv.args, ['--no-clobber', '--interactive', '--backup', '--update=none']);
+  const ops = operands(inv.args);
+  if (safe || ops.length < 2) return [];
+  const dest = ops[ops.length - 1].raw;
+  return [
+    hit(
+      {
+        id: 'copy-overwrite',
+        area: 'data_loss',
+        level: 'low',
+        certainty: 'possible',
+        reason: `Replaces ${dest} (or files inside it) if it already exists. The old contents are lost.`,
+        depends_on: `Whether ${dest} already exists and holds anything you need.`,
+        how_to_verify: `Run "ls -l ${dest}" first. Adding -n never overwrites.`,
+        matchesModel: OVERWRITE_MATCH,
+      },
+      snippetOf(ctx, seg),
+    ),
+  ];
+};
+
+export const UNIX_DATA_LOSS: RuleFn[] = [copyOverwrite, rmRules, findDelete, xargsDelete, wipe, overwriteRedirect, gitRules, rsyncDelete, crontabRemove];
 

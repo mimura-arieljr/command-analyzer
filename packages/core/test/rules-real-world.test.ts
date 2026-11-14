@@ -157,3 +157,122 @@ describe('one shell family per finding in auto mode', () => {
     expect(ids('rm -rf $HOME')).toEqual(expect.arrayContaining(['delete-recursive', 'delete-root-path']));
   });
 });
+
+describe('commands run somewhere else', () => {
+  it.each([
+    'ssh host rm -rf /data',
+    'ssh -p 2222 -i key.pem user@host rm -rf /data',
+    'docker exec c rm -rf /data',
+    'docker exec -it -u root c rm -rf /data',
+    'podman exec c rm -rf /data',
+    'kubectl exec p -- rm -rf /data',
+    'kubectl exec -n prod -c app p -- sh -c "rm -rf /data"',
+  ])('%s is a high delete', (text) => {
+    expect(dataLoss(text).some((h) => h.id === 'delete-recursive' && h.level === 'high')).toBe(true);
+    expect(dataLoss(text, 'bash').some((h) => h.level === 'high')).toBe(true);
+  });
+
+  it.each(['ssh host', 'ssh host uptime', 'docker exec c ls /data', 'kubectl exec p -- cat /etc/hosts', 'docker ps'])('%s gives nothing', (text) => {
+    expect(ids(text)).toEqual([]);
+  });
+});
+
+describe('package and platform deleters', () => {
+  it.each([
+    ['npx rimraf dist', undefined],
+    ['npx -y rimraf dist', undefined],
+    ['rimraf node_modules', undefined],
+    ['npx rimraf dist', 'powershell'],
+    ['npx rimraf dist', 'cmd'],
+  ] as const)('%s is a high delete (%s)', (text, shell) => {
+    expect(levelOf(text, 'delete-recursive', shell)).toBe('high');
+  });
+
+  it.each([
+    'diskutil eraseDisk APFS X disk2',
+    'diskutil eraseVolume APFS X disk2s1',
+    'diskutil zeroDisk disk2',
+    'diskutil apfs deleteContainer disk2',
+    'diskutil partitionDisk disk2 GPT APFS X 100%',
+  ])('%s is a wipe', (text) => {
+    expect(levelOf(text, 'wipe', 'zsh')).toBe('high');
+  });
+
+  it('diskutil list is quiet', () => {
+    expect(ids('diskutil list')).toEqual([]);
+  });
+
+  it.each([
+    ['robocopy src dst /MIR', 'cmd'],
+    ['robocopy src dst /mir /r:1', 'powershell'],
+    ['robocopy src dst /PURGE', undefined],
+  ] as const)('%s deletes files missing from the source (%s)', (text, shell) => {
+    expect(levelOf(text, 'mirror-delete', shell)).toBe('high');
+  });
+
+  it('robocopy without /MIR or /PURGE is quiet', () => {
+    expect(ids('robocopy src dst /E')).toEqual([]);
+  });
+
+  it('forfiles running del deletes every matched file', () => {
+    expect(levelOf('forfiles /p C:\\logs /m *.log /d -7 /c "cmd /c del @path"', 'delete-recursive')).toBe('high');
+    expect(levelOf('forfiles /p C:\\logs /c "cmd /c del @path"', 'delete-recursive', 'cmd')).toBe('high');
+  });
+
+  it('forfiles running echo is quiet', () => {
+    expect(ids('forfiles /c "cmd /c echo @file"', 'cmd')).toEqual([]);
+  });
+});
+
+describe('launchctl load', () => {
+  it.each(['launchctl load x.plist', 'launchctl load -w ~/Library/LaunchAgents/x.plist', 'launchctl bootstrap gui/501 x.plist'])('%s is a service change', (text) => {
+    expect(levelOf(text, 'service-change', 'zsh')).toBe('medium');
+  });
+
+  it('launchctl list is quiet', () => {
+    expect(ids('launchctl list')).toEqual([]);
+  });
+});
+
+describe('deletes inside inline scripts', () => {
+  it.each([
+    'perl -e \'unlink glob "*"\'',
+    'perl -MFile::Path -e \'rmtree("build")\'',
+    'python -c "import shutil; shutil.rmtree(\'build\')"',
+    'python3 -c "import os; os.remove(\'a.txt\')"',
+    'node -e "require(\'fs\').rmSync(\'dist\', {recursive: true})"',
+    'ruby -e "FileUtils.rm_rf(\'tmp\')"',
+    'php -r "unlink(\'a.txt\');"',
+  ])('%s is a possible high delete', (text) => {
+    const h = runRules(text).find((x) => x.id === 'script-delete');
+    expect(h).toMatchObject({ area: 'data_loss', level: 'high', certainty: 'possible' });
+  });
+
+  it.each(['python -c "print(1)"', 'node -e "console.log(1)"', 'python build.py', 'perl -ne \'print if /x/\' a.txt'])('%s gives nothing', (text) => {
+    expect(ids(text)).toEqual([]);
+  });
+});
+
+describe('copy and move over an existing file', () => {
+  it.each([
+    ['mv a.txt b.txt', 'bash'],
+    ['cp -r src dst', 'bash'],
+    ['copy /y a.txt b.txt', 'cmd'],
+    ['move /y a.txt b.txt', 'cmd'],
+    ['Copy-Item a.txt b.txt', 'powershell'],
+    ['Move-Item a.txt b.txt -Force', 'powershell'],
+  ] as const)('%s may overwrite (%s)', (text, shell) => {
+    const h = runRules(text, shell).find((x) => x.id === 'copy-overwrite');
+    expect(h).toMatchObject({ area: 'data_loss', level: 'low', certainty: 'possible' });
+  });
+
+  it.each([
+    ['mv -n a.txt b.txt', 'bash'],
+    ['cp -i a b', 'bash'],
+    ['cp --no-clobber a b', 'bash'],
+    ['copy a.txt b.txt', 'cmd'],
+    ['Move-Item a.txt b.txt', 'powershell'],
+  ] as const)('%s does not (%s)', (text, shell) => {
+    expect(ids(text, shell)).not.toContain('copy-overwrite');
+  });
+});
